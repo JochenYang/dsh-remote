@@ -1,0 +1,32 @@
+{
+  "name": "dsh-remote-relay",
+  "version": "0.1.2",
+  "description": "Self-hosted relay server for the dsh-remote mobile tunnel: pairing, challenge-response auth, HTTP reverse proxy and WebSocket frame bridging between a phone browser and the dsh desktop host.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "dsh-remote-relay": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "deploy"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/cli.js",
+    "pack": "node scripts/pack.mjs",
+    "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  },
+  "license": "MIT"
+}

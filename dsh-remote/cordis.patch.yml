@@ -1,0 +1,9 @@
+# dsh-remote — 手机远程连接
+# 运行时配置可由 设置 → 手机连接 页覆盖（持久化于 storages/dsh-remote/config.json）。
+- insert:
+    - id: dsh-remote
+      name: dsh-remote
+      config:
+        relayUrl: ""
+        hostToken: ""
+        autoConnect: true

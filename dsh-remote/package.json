@@ -1,0 +1,47 @@
+{
+  "name": "dsh-remote",
+  "version": "0.1.9",
+  "description": "Mobile remote plugin for DeepSeek Harness: the desktop host agent of the dsh-remote tunnel. Bridges a phone browser to the local dsh web server through a self-hosted relay (HTTP reverse proxy + WebSocket frame forwarding).",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "~18.3.1",
+    "esbuild": "^0.25.0",
+    "qrcode-generator": "^1.4.4",
+    "react": "^18.2.0",
+    "react-dom": "18.2.0",
+    "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=lib/index.js --external:@deepseek-ai/*",
+    "build:client": "node scripts/build-client.mjs",
+    "typecheck": "tsc --noEmit",
+    "typecheck:client": "tsc -p tsconfig.client.json --noEmit",
+    "pack": "node scripts/pack.mjs",
+    "prepack": "pnpm run build"
+  }
+}
