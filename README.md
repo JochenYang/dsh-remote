@@ -1,3 +1,4 @@
+<div align="center">
 # dsh-remote — 手机上的 DeepSeek Harness
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
@@ -8,6 +9,8 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](./README.md)
 
 简体中文 | [English](README.en.md)
+
+</div>
 
 > 用手机浏览器完整操作 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 桌面端：
 > 自托管中继 + 桌面插件的点对点隧道，不改 dsh 内核与前端，

@@ -1,3 +1,4 @@
+<div align="center">
 # dsh-remote — DeepSeek Harness in Your Pocket
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
@@ -8,6 +9,8 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](./README.md)
 
 [简体中文](README.md) | English
+
+</div>
 
 > Operate the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 > desktop from a phone browser: a self-hosted relay plus a desktop plugin form a

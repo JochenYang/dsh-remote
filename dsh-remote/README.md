@@ -1,3 +1,4 @@
+<div align="center">
 # dsh-remote — 手机远程连接（桌面 host 端）
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
@@ -9,6 +10,8 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 简体中文 | [English](README.en.md)
+
+</div>
 
 > 让手机浏览器像桌面端一样操作 DeepSeek Harness：
 > 通过自托管 `relay-server` 中转（HTTP 反向代理 + WebSocket 帧桥接），

@@ -1,3 +1,4 @@
+<div align="center">
 # dsh-remote — Mobile Remote (Desktop Host Side)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
@@ -9,6 +10,8 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 [简体中文](README.md) | English
+
+</div>
 
 > Operate DeepSeek Harness from a phone browser as if it were the desktop:
 > a self-hosted `relay-server` shuttles traffic (HTTP reverse proxy + WebSocket

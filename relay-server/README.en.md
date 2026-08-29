@@ -1,3 +1,4 @@
+<div align="center">
 # relay-server (dsh-remote-relay) — Self-hosted Mobile Relay
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
@@ -9,6 +10,8 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 [简体中文](README.md) | English
+
+</div>
 
 > The self-hosted relay of the dsh-remote mobile tunnel: pairing auth, HTTP
 > reverse proxy and WebSocket frame bridging. Single process, zero database

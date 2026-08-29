@@ -1,3 +1,4 @@
+<div align="center">
 # relay-server（dsh-remote-relay）— 自托管手机中继
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
@@ -9,6 +10,8 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 简体中文 | [English](README.en.md)
+
+</div>
 
 > dsh-remote 手机隧道的自托管中继：配对认证、HTTP 反向代理与 WebSocket 帧桥接。
 > 单进程、零数据库（JSONL 追加存储），落盘只存 sha256 摘要。
