@@ -3,6 +3,7 @@
 # relay-server（dsh-remote-relay）— 自托管手机中继
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/JochenYang/dsh-remote/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/JochenYang/dsh-remote/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white&style=flat-square)](https://www.typescriptlang.org/)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white&style=flat-square)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-11.7-F69220?logo=pnpm&logoColor=white&style=flat-square)](https://pnpm.io/)
