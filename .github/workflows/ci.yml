@@ -5,22 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+# Typecheck stays a local gate: the tsconfig @deepseek-ai/* mappings
+# resolve into build outputs (lib/types) of a deepseek-harness checkout
+# beside this repository, which a fresh CI checkout cannot produce
+# without building the upstream monorepo.
+
 jobs:
   dsh-remote:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: repo
-      # Type mappings in dsh-remote/tsconfig*.json point at a
-      # deepseek-harness checkout beside this repository
-      # (`../../deepseek-harness`), so CI checks out the public
-      # upstream there (shallow — types only).
-      - uses: actions/checkout@v4
-        with:
-          repository: deepseek-ai/deepseek-harness
-          path: deepseek-harness
-          depth: 1
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -28,19 +22,16 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: repo/dsh-remote/pnpm-lock.yaml
+          cache-dependency-path: dsh-remote/pnpm-lock.yaml
       - name: Install
         run: pnpm install
-        working-directory: repo/dsh-remote
+        working-directory: dsh-remote
       - name: Build
         run: pnpm build && pnpm build:client
-        working-directory: repo/dsh-remote
-      - name: Typecheck
-        run: pnpm typecheck && pnpm typecheck:client
-        working-directory: repo/dsh-remote
+        working-directory: dsh-remote
       - name: Syntax check
         run: node --check lib/index.js
-        working-directory: repo/dsh-remote
+        working-directory: dsh-remote
 
   relay-server:
     runs-on: ubuntu-latest
@@ -59,9 +50,6 @@ jobs:
         working-directory: relay-server
       - name: Build
         run: pnpm build
-        working-directory: relay-server
-      - name: Typecheck
-        run: pnpm typecheck
         working-directory: relay-server
       - name: Syntax check
         run: |
