@@ -124,6 +124,21 @@ relay.example.com {
 }
 ```
 
+### 反代排障（WebSocket 升级头）
+
+`/events/*` 与 `/ws` 依赖 WebSocket upgrade。caddy 原生支持、无需配置；**nginx 与 EdgeOne 等 CDN 必须显式放行 Upgrade/Connection 头**，否则手机端事件流会静默失败（无实时输出、状态不刷新）：
+
+```nginx
+location / {
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_pass http://127.0.0.1:8787;
+}
+```
+
+EdgeOne：在规则引擎为该域名开启 WebSocket 支持（或源站组配置 Upgrade 头透传），保存后清缓存重试。
+
 ### 5. 防火墙与桌面端
 
 ```sh

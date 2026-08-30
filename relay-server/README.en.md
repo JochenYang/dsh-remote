@@ -132,6 +132,21 @@ relay.example.com {
 }
 ```
 
+### Reverse-proxy troubleshooting (WebSocket upgrade headers)
+
+`/events/*` and `/ws` rely on the WebSocket upgrade. caddy supports it natively; **nginx and CDNs such as EdgeOne must explicitly forward the Upgrade/Connection headers**, otherwise the phone event stream fails silently (no live output, stale status):
+
+```nginx
+location / {
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_pass http://127.0.0.1:8787;
+}
+```
+
+EdgeOne: enable WebSocket for the domain in the rule engine (or forward Upgrade headers on the origin group), then purge cache and retry.
+
 ### 5. Firewall & desktop
 
 ```sh
