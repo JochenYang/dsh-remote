@@ -16,6 +16,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "start": "node dist/cli.js",
+    "test": "node test/smoke.cjs",
     "pack": "node scripts/pack.mjs",
     "prepack": "pnpm run build"
   },

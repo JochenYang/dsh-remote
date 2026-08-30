@@ -56,3 +56,6 @@ jobs:
           node --check dist/index.js
           node --check dist/cli.js
         working-directory: relay-server
+      - name: Smoke test
+        run: pnpm test
+        working-directory: relay-server
