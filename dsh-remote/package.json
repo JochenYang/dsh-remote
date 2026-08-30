@@ -43,5 +43,14 @@
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit",
     "pack": "node scripts/pack.mjs",
     "prepack": "pnpm run build"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JochenYang/dsh-remote.git",
+    "directory": "dsh-remote"
+  },
+  "bugs": {
+    "url": "https://github.com/JochenYang/dsh-remote/issues"
+  },
+  "homepage": "https://github.com/JochenYang/dsh-remote#readme"
 }

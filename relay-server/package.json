@@ -28,5 +28,14 @@
     "esbuild": "^0.25.0",
     "typescript": "^5.8.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JochenYang/dsh-remote.git",
+    "directory": "relay-server"
+  },
+  "bugs": {
+    "url": "https://github.com/JochenYang/dsh-remote/issues"
+  },
+  "homepage": "https://github.com/JochenYang/dsh-remote#readme"
 }
