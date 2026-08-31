@@ -38,6 +38,16 @@ each package versioned independently (semver).
 
 ## dsh-remote
 
+### 0.1.10 - 2026-08-31
+
+#### Fixed
+
+- Mobile settings sheet now scrolls: the content pane's default
+  `min-height:auto` let it grow past the clamped full-screen panel, so the
+  inner scroll region never received a bounded height and `overflow:hidden`
+  clipped the rest; bounding the pane with `min-height:0` lets the existing
+  inner scroll engage.
+
 ### 0.1.9 - 2026-08-29
 
 #### Fixed

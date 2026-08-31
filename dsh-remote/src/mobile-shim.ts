@@ -43,6 +43,15 @@ const SHIM_CSS = `
     max-height: 100dvh !important;
     border-radius: 0 !important;
   }
+  /* The content pane already owns the scroll: its inner .options carries
+     flex:1 + min-height:0 + overflow-y:auto. But on mobile the pane is a
+     column flex item, whose default min-height:auto grows it past the clamped
+     100dvh panel — so that inner scroll never gets a bounded height and the
+     panel's overflow:hidden clips the rest. Bounding the pane lets the inner
+     .options scroll engage (and the fixed header keeps the close button in reach). */
+  [role="dialog"][aria-modal="true"]:has(> nav) > :last-child {
+    min-height: 0 !important;
+  }
   [role="dialog"][aria-modal="true"]:has(> nav) > nav {
     flex-direction: row !important;
     align-items: center;
