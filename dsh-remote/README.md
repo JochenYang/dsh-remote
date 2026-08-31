@@ -8,7 +8,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white&style=flat-square)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-11.7-F69220?logo=pnpm&logoColor=white&style=flat-square)](https://pnpm.io/)
 [![Protocol](https://img.shields.io/badge/tunnel_protocol-v1-4c6ef5?style=flat-square)](../docs/PROTOCOL.md)
-[![Version](https://img.shields.io/badge/version-0.1.9-4c6ef5?style=flat-square)](./package.json)
+[![Version](https://img.shields.io/github/v/release/JochenYang/dsh-remote?style=flat-square&label=version)](https://github.com/JochenYang/dsh-remote/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 简体中文 | [English](README.en.md)
@@ -51,14 +51,20 @@
 
 ## 安装
 
+从 [Releases](https://github.com/JochenYang/dsh-remote/releases) 下载 `dsh-remote-<ver>.tgz`，然后：
+
 ```sh
-# 在本包目录构建打包
+# 装入 dsh 的 web profile 并重启 DSH
+dsh plugin --profile web add ./dsh-remote-<ver>.tgz
+```
+
+或从源码构建（在本包目录内）：
+
+```sh
 pnpm install
 pnpm build            # host 端 esbuild 产物
 pnpm build:client     # 设置页 client bundle
 pnpm pack             # 产出 dsh-remote-<ver>.tgz
-
-# 装入 dsh 的 web profile 并重启 DSH
 dsh plugin --profile web add ./dsh-remote-<ver>.tgz
 ```
 

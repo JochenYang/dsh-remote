@@ -43,8 +43,9 @@
    `relay-server/` 内 `pnpm build` 后按其 README 的 systemd + caddy 步骤部署；
    CentOS/Rocky/Alma 可用自带 `deploy/install.sh <域名>` 一键完成。
 2. **安装插件**（桌面 DSH，含 web profile）：
-   `dsh-remote/` 内 `pnpm build && pnpm build:client && pnpm pack`，
-   然后 `dsh plugin --profile web add ./dsh-remote-<ver>.tgz` 并重启 DSH。
+   从 [Releases](https://github.com/JochenYang/dsh-remote/releases) 下载 `dsh-remote-<ver>.tgz`，
+   `dsh plugin --profile web add ./dsh-remote-<ver>.tgz` 并重启 DSH。
+   从源码构建：`dsh-remote/` 内 `pnpm install && pnpm build && pnpm build:client && pnpm pack`。
 3. **配对**：桌面 **设置 → 手机连接** 填中继地址与 `HOST_TOKEN`，
    手机扫二维码或在 `<relay>/pair` 输入 6 位配对码即可进入与桌面同源的操作界面。
 

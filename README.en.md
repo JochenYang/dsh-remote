@@ -45,8 +45,9 @@ Phone browser ──HTTPS──> relay-server ──WS frames──> dsh-remote 
    caddy steps; on CentOS/Rocky/Alma the bundled
    `deploy/install.sh <domain>` does it in one shot.
 2. **Install the plugin** (desktop DSH with the web profile):
-   inside `dsh-remote/` run `pnpm build && pnpm build:client && pnpm pack`,
-   then `dsh plugin --profile web add ./dsh-remote-<ver>.tgz` and restart DSH.
+   download `dsh-remote-<ver>.tgz` from [Releases](https://github.com/JochenYang/dsh-remote/releases),
+   `dsh plugin --profile web add ./dsh-remote-<ver>.tgz` and restart DSH.
+   To build from source: inside `dsh-remote/` run `pnpm install && pnpm build && pnpm build:client && pnpm pack`.
 3. **Pair**: fill the relay URL and `HOST_TOKEN` under
    **Settings → Phone Connection**; scan the QR code on the phone, or enter the
    6-digit code at `<relay>/pair` to get the same workspace as the desktop.
