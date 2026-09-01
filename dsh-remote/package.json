@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Mobile remote plugin for DeepSeek Harness: the desktop host agent of the dsh-remote tunnel. Bridges a phone browser to the local dsh web server through a self-hosted relay (HTTP reverse proxy + WebSocket frame forwarding).",
   "type": "module",
   "main": "lib/index.js",
@@ -27,9 +27,13 @@
     }
   },
   "license": "MIT",
+  "dependencies": {
+    "ws": "^8.21.3"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "~18.3.1",
+    "@types/ws": "^8.18.1",
     "esbuild": "^0.25.0",
     "qrcode-generator": "^1.4.4",
     "react": "^18.2.0",
@@ -37,7 +41,7 @@
     "typescript": "^5.8.0"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=lib/index.js --external:@deepseek-ai/*",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=lib/index.js --external:@deepseek-ai/* --external:ws",
     "build:client": "node scripts/build-client.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit",

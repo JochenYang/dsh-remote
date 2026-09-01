@@ -10,7 +10,9 @@
 
 import { HTTP_CHUNK_BYTES, T } from './frames.js'
 import type { Frame } from './agent.js'
+import { injectHostTransport } from './host-transport.js'
 import { injectMobileShim } from './mobile-shim.js'
+import type { UpstreamCookieAuth } from './upstream-auth.js'
 
 export type Send = (frame: Frame) => void
 
@@ -57,31 +59,13 @@ const RESPONSE_FORBIDDEN = new Set([
   'upgrade',
   // The response is re-chunked into frames, so a pre-announced length cannot hold.
   'content-length',
+  // The body is read through the fetch layer, which transparently decodes
+  // gzip/deflate/br; forwarding the original content-encoding with the
+  // already-decoded bytes makes the phone gunzip plain text and fail
+  // (Z_DATA_ERROR / ERR_HTTP_RESPONSE_CODE_FAILURE). Upstream is also asked
+  // for identity (see fetchUpstream), so this is belt-and-suspenders.
+  'content-encoding',
 ])
-
-/**
- * Client-bundle rewrites applied to tunnel traffic only. The dsh web client
- * keys its settings mirror on `connection.isLoopback`, which reads the page
- * hostname — a phone behind the relay never qualifies, so every settings
- * surface (model provider catalog, plugin config sections) would stay
- * permanently disabled even though tunneled /api traffic passes the Host
- * fence and `settings.describe` answers redacted (secret-role fields never
- * ride the wire). Forcing the shared mirror to host persistence restores
- * those surfaces for tunnel sessions; desktop/GUI traffic never crosses this
- * plane. Marker-absent (a future dsh build changing that line) degrades to
- * pass-through.
- */
-const CLIENT_BUNDLE_REWRITES: ReadonlyArray<{
-  path: string
-  from: string
-  to: string
-}> = [
-  {
-    path: '/plugins/@deepseek-ai/dsh-client-ui-settings/client.js',
-    from: 'connection.isLoopback ? "host" : "memory"',
-    to: '"host"',
-  },
-]
 
 interface Pending {
   id: number
@@ -99,12 +83,16 @@ export interface HttpPlaneOptions {
   origin: () => string
   log: (message: string) => void
   send: Send
+  /**
+   * Upstream browser-session cookie owner. When present, its cookie is attached
+   * to every upstream request (modern dsh demands it) and a 401 triggers one
+   * refresh-and-retry. Absent (older harness) = pass-through, unchanged.
+   */
+  auth?: UpstreamCookieAuth
 }
 
 export class HttpPlane {
   private readonly pending = new Map<number, Pending>()
-  /** Marker-miss warnings already logged, one per rewrite entry per process. */
-  private readonly warnedRewriteMisses = new Set<string>()
 
   constructor(private readonly options: HttpPlaneOptions) {}
 
@@ -169,10 +157,11 @@ export class HttpPlane {
     }
   }
 
-  private async perform(pending: Pending): Promise<void> {
-    const controller = new AbortController()
-    pending.controller = controller
-
+  /**
+   * One upstream fetch for a pending request, rebuilt each call so the auth
+   * cookie is read fresh (a refresh changes it between the 401 and the retry).
+   */
+  private async fetchUpstream(pending: Pending, signal: AbortSignal): Promise<Response> {
     const method = pending.method
     const hasBody = method !== 'GET' && method !== 'HEAD'
     const body = hasBody
@@ -185,14 +174,36 @@ export class HttpPlane {
       if (REQUEST_FORBIDDEN.has(lower)) continue
       headers[lower] = value
     }
+    // Read the upstream body unencoded: the fetch layer decodes gzip/br, and
+    // the re-chunked frames are only consistent with the phone when they are
+    // plain bytes (content-encoding is stripped from the response head).
+    headers['accept-encoding'] = 'identity'
+    if (this.options.auth !== undefined) {
+      const cookie = this.options.auth.cookie()
+      if (cookie !== undefined) headers.cookie = cookie
+    }
 
-    const response = await fetch(this.options.origin() + pending.path + pending.query, {
+    return fetch(this.options.origin() + pending.path + pending.query, {
       method,
       headers,
       body,
-      signal: controller.signal,
+      signal,
       redirect: 'manual',
     })
+  }
+
+  private async perform(pending: Pending): Promise<void> {
+    const controller = new AbortController()
+    pending.controller = controller
+
+    let response = await this.fetchUpstream(pending, controller.signal)
+    if (response.status === 401 && this.options.auth !== undefined) {
+      // Fresh cookie (or a re-minted one after an upstream restart) solves a
+      // stale-signature rejection; retry once, keeping the phone's view clean.
+      this.options.auth.refresh()
+      try { await response.body?.cancel() } catch { /* stream already consumed */ }
+      response = await this.fetchUpstream(pending, controller.signal)
+    }
 
     // Response head — hop-by-hop and length headers stripped for frame re-chunking.
     const responseHeaders: Record<string, string> = {}
@@ -209,11 +220,6 @@ export class HttpPlane {
       return
     }
 
-    const rewrite = CLIENT_BUNDLE_REWRITES.find((entry) => entry.path === pending.path)
-    if (rewrite !== undefined) {
-      await this.streamRewritten(pending, rewrite, response.body)
-      return
-    }
     if ((responseHeaders['content-type'] ?? '').includes('text/html')) {
       await this.streamHtml(pending, response.body)
       return
@@ -242,10 +248,10 @@ export class HttpPlane {
 
   /**
    * Buffered send for the app shell: every text/html response is the SPA
-   * index, small and static, so the whole body is read and the mobile shim
-   * (viewport fix + responsive stylesheet) injected before it streams out.
-   * Desktop/GUI traffic never crosses this plane, so the shim only ever
-   * reaches tunnel sessions.
+   * index, small and static, so the whole body is read, the host-transport
+   * ownership declared, and the mobile shim (viewport fix + responsive
+   * stylesheet) injected before it streams out. Desktop/GUI traffic never
+   * crosses this plane, so both shims only ever reach tunnel sessions.
    */
   private async streamHtml(pending: Pending, stream: ReadableStream<Uint8Array>): Promise<void> {
     const chunks: Buffer[] = []
@@ -255,40 +261,8 @@ export class HttpPlane {
       if (done) break
       if (value.byteLength > 0) chunks.push(Buffer.from(value))
     }
-    const body = injectMobileShim(Buffer.concat(chunks).toString('utf8'))
+    const body = injectMobileShim(injectHostTransport(Buffer.concat(chunks).toString('utf8')))
     this.sendBuffered(pending, Buffer.from(body, 'utf8'))
-    // Release the controller so a late abort after stream end is ignored.
-    this.pending.delete(pending.id)
-    this.options.send({ t: T.HTTP_END, id: pending.id })
-  }
-
-  /**
-   * Buffered send for rewrite targets: these are bounded static bundles the
-   * local server answers as one file, so the whole body is read, the marker
-   * replacement applied, and the result re-chunked. A body without the marker
-   * (dsh build drift) ships unmodified; the mismatch is logged once per entry.
-   */
-  private async streamRewritten(
-    pending: Pending,
-    rewrite: { path: string; from: string; to: string },
-    stream: ReadableStream<Uint8Array>,
-  ): Promise<void> {
-    const chunks: Buffer[] = []
-    const reader = stream.getReader()
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (value.byteLength > 0) chunks.push(Buffer.from(value))
-    }
-    const original = Buffer.concat(chunks)
-    let body = original
-    if (original.includes(rewrite.from)) {
-      body = Buffer.from(original.toString('utf8').replaceAll(rewrite.from, rewrite.to), 'utf8')
-    } else if (!this.warnedRewriteMisses.has(rewrite.path)) {
-      this.warnedRewriteMisses.add(rewrite.path)
-      this.options.log(`http-plane: rewrite marker missing in ${rewrite.path}; serving unmodified`)
-    }
-    this.sendBuffered(pending, body)
     // Release the controller so a late abort after stream end is ignored.
     this.pending.delete(pending.id)
     this.options.send({ t: T.HTTP_END, id: pending.id })

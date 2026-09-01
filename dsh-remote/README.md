@@ -30,7 +30,8 @@
 ## 功能特性
 
 - **完整隧道**：手机对 `/d/<deviceId>/*` 的全部请求反代到本地 dsh web server，
-  SSE / blob 流式响应逐帧保序回传；`/events/mux`、`/events/host` 双向 WS 桥接。
+  SSE / blob 流式响应逐帧保序回传；dsh 前端的事件流（当前版本为
+  `/api/remote.mux` WebSocket）双向桥接。
 - **信任头剥离**：转发前剥离 `origin` / `sec-fetch-*` / `referer` 等浏览器信任头，
   让隧道流量通过 dsh 的 `/api` Host 防线（否则所有 API 调用 403）。
 - **settings 解锁**：dsh 前端按页面 hostname 判定 settings 可用性，隧道会话会被
@@ -46,7 +47,7 @@
 
 - [DSH（DeepSeek Harness）](https://github.com/deepseek-ai/deepseek-harness) 桌面端，
   含 `web` profile（本插件挂载其 webServer）。
-- Node.js ≥ 22（agent 使用原生全局 `WebSocket`）。
+- Node.js ≥ 22（relay 上行使用原生全局 `WebSocket`；本地事件流拨号用 `ws`，已打包进插件）。
 - 一个已部署的自托管 relay（见 [relay-server](../relay-server/README.md)）。
 
 ## 安装
@@ -85,7 +86,7 @@ dsh plugin --profile web add ./dsh-remote-<ver>.tgz
 
 - **上行**：手机对 `/d/<deviceId>/*` 的 HTTP 请求 → relay → host（本插件）
   → 本地 dsh web server，响应按帧流式回传（帧序即流序）。
-- **下行**：dsh 前端的两条事件流（`/events/mux`、`/events/host`）为 WebSocket，
+- **下行**：dsh 前端的事件流（当前版本为 `/api/remote.mux` WebSocket），
   relay 透传 `ws-open/ws-frame/ws-close` 帧，本插件在本地建立等价 WS 双向搬运。
 - **保活**：30s ping/pong，90s 静默判死；断线指数退避重连（1s→60s）。
 
@@ -109,6 +110,10 @@ pnpm pack             # 打包 tgz
 - `HOST_TOKEN` 是 relay 侧唯一信任边界；本插件不做二次鉴权，令牌只存本机。
 - 配对码 10 分钟 TTL、一次性挑战（60s）；日志不打印 code/token。
 - 隧道流量对本地 dsh 而言等同回环客户端，信任边界在 relay 的手机会话认证。
+- 新版 dsh 的浏览器会话 cookie（`client-connection`）由插件在进程内桥接：用
+  Connection 启动令牌换取绑定回环 authority 的 cookie 并附到隧道流量，令牌
+  绝不下发手机；老版 dsh 无此服务时自动透传。事件流路径以当前 dsh 的实际
+  路径为准（旧 `/events/*` 已改为 `/api/remote.mux`）。
 
 ## License
 

@@ -76,6 +76,10 @@ changes the structure the shim degrades back to the stock desktop layout.
 - Only `sha256(code)` / `sha256(token)` are persisted; logs are scrubbed.
 - Phones authenticate via HttpOnly session cookies; the admin console has its
   own password and session store.
+- Modern dsh's browser-session auth (`client-connection`) is bridged in-process
+  by the host plugin: it mints the loopback-authority cookie from the Connection
+  launch token and attaches it to tunneled traffic — the token never reaches the
+  phone. Older dsh builds without that service degrade to pass-through.
 - Always deploy behind TLS (full systemd + caddy examples in the READMEs).
 
 Full threat model and wire formats: [docs/PROTOCOL.md](./docs/PROTOCOL.md).

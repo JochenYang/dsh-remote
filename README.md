@@ -66,6 +66,9 @@ hash 类名，dsh 升级若结构变化则自动退回原生桌面布局，不�
 - `HOST_TOKEN` 是 relay 的唯一信任边界；配对走一次性挑战-响应，防重放。
 - 中继落盘只存 `sha256(code)` / `sha256(token)`；日志脱敏。
 - 手机经 HttpOnly 会话 cookie 认证；管理台独立口令与会话。
+- 新版 dsh 的浏览器会话认证（`client-connection`）由主机插件在进程内桥接：
+  用 Connection 启动令牌换取绑定回环 authority 的 cookie 并附到隧道流量上，
+  令牌绝不下发手机；老版 dsh 无此服务时自动降级为透传。
 - 部署必须置于 TLS 之后（README 提供 systemd + caddy 完整示例）。
 
 完整威胁模型与帧格式见 [docs/PROTOCOL.md](./docs/PROTOCOL.md)。

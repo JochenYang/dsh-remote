@@ -20,6 +20,7 @@ import { T } from './frames.js'
 import { HttpPlane } from './http-plane.js'
 import { loadIdentity } from './identity.js'
 import { registerRemoteRoutes } from './routes.js'
+import { createUpstreamCookieAuth, type BrowserConnectionAuthorizer } from './upstream-auth.js'
 import { WsPlane } from './ws-plane.js'
 
 /** Cordis plugin name. */
@@ -51,6 +52,21 @@ export async function apply(ctx: Context, config: RemoteSettings): Promise<void>
       const origin = (): string => `http://127.0.0.1:${webCtx.webServer.port}`
       const logWarn = (message: string): void => log.warn(message)
 
+      // Modern dsh guards its web API behind an authority-bound browser cookie
+      // (see src/upstream-auth.ts). Bridge it so the phone's tunneled requests
+      // authenticate as the loopback client they actually are; on older harness
+      // builds the auth owner is a pass-through and nothing changes.
+      const auth = createUpstreamCookieAuth(origin, () => {
+        // `ctx.get` returns a cordis tracing proxy whose wrapped service methods
+        // lose `this` (they read `this.browserAuth` against the proxy and get
+        // undefined). The proxy's `cordis.original` symbol yields the raw
+        // service; its `browserAuth` instance owns the launch token + secret.
+        const service = webCtx.get('connection')
+        if (service === undefined || service === null) return undefined
+        const raw = service[Symbol.for('cordis.original')] ?? service
+        return (raw as { browserAuth?: BrowserConnectionAuthorizer }).browserAuth
+      })
+
       const agent = new RelayAgent({
         deviceId: identity.deviceId,
         relayUrl: settings.relayUrl,
@@ -59,8 +75,8 @@ export async function apply(ctx: Context, config: RemoteSettings): Promise<void>
         log: (message) => log.info(message),
       })
 
-      const httpPlane = new HttpPlane({ origin, log: logWarn, send: (frame) => agent.sendFrame(frame) })
-      const wsPlane = new WsPlane({ origin, log: logWarn, send: (frame) => agent.sendFrame(frame) })
+      const httpPlane = new HttpPlane({ origin, log: logWarn, send: (frame) => agent.sendFrame(frame), auth })
+      const wsPlane = new WsPlane({ origin, log: logWarn, send: (frame) => agent.sendFrame(frame), auth })
 
       // Route data-plane frames to the matching plane (control plane lives in
       // the agent; unknown types are ignored there and surface here).

@@ -3,16 +3,19 @@
  *
  * `ws-open` makes us dial the same path on the local dsh web server; after
  * `ws-open-ok`, `ws-frame` traffic flows both ways and `ws-close` tears the
- * full link down. The local socket is the Node 22+ global `WebSocket`
- * (sub-protocols forwarded from the phone's handshake).
+ * full link down. The local socket is the `ws` client so the upstream
+ * browser-session cookie (modern dsh authentication) can be attached on the
+ * upgrade; sub-protocols are forwarded from the phone's handshake.
  */
 
+import { WebSocket as WsClient } from 'ws'
 import { T } from './frames.js'
 import type { Frame } from './agent.js'
 import type { Send } from './http-plane.js'
+import type { UpstreamCookieAuth } from './upstream-auth.js'
 
 interface Bridge {
-  ws: WebSocket | null
+  ws: WsClient | null
   open: boolean
   /** Phone closed first — don't echo the close back to the relay. */
   phoneClosed: boolean
@@ -22,6 +25,12 @@ export interface WsPlaneOptions {
   origin: () => string
   log: (message: string) => void
   send: Send
+  /**
+   * Upstream browser-session cookie owner. When present, its cookie is attached
+   * to the local upgrade (modern dsh demands it). Absent (older harness) = no
+   * cookie, matching the previous pass-through dial.
+   */
+  auth?: UpstreamCookieAuth
 }
 
 export class WsPlane {
@@ -39,7 +48,7 @@ export class WsPlane {
       case T.WS_FRAME: {
         const bridge = this.bridges.get(id)
         const ws = bridge?.ws
-        if (ws === undefined || ws === null || ws.readyState !== WebSocket.OPEN) break
+        if (ws === undefined || ws === null || ws.readyState !== WsClient.OPEN) break
         const opcode = frame.opcode === 2 ? 2 : 1
         const bytes = Buffer.from(String(frame.dataBase64 ?? ''), 'base64')
         try {
@@ -53,7 +62,7 @@ export class WsPlane {
         const bridge = this.bridges.get(id)
         if (bridge === undefined) break
         bridge.phoneClosed = true
-        if (bridge.ws !== null && bridge.ws.readyState === WebSocket.OPEN) {
+        if (bridge.ws !== null && bridge.ws.readyState === WsClient.OPEN) {
           try {
             const code = Number(frame.code) || 1000
             const reason = typeof frame.reason === 'string' ? frame.reason : undefined
@@ -79,11 +88,14 @@ export class WsPlane {
       .map(part => part.trim())
       .filter(part => part !== '')
 
-    let ws: WebSocket
+    const cookie = this.options.auth?.cookie()
+    const address = this.options.origin().replace(/^http/, 'ws') + path
+
+    let ws: WsClient
     try {
-      ws = protocols.length > 0
-        ? new WebSocket(this.options.origin().replace(/^http/, 'ws') + path, protocols)
-        : new WebSocket(this.options.origin().replace(/^http/, 'ws') + path)
+      ws = cookie === undefined
+        ? new WsClient(address, protocols)
+        : new WsClient(address, protocols, { headers: { cookie } })
     } catch (error) {
       this.bridges.delete(id)
       this.options.send({ t: T.WS_OPEN_ERR, id, reason: (error as Error).message })
@@ -91,41 +103,39 @@ export class WsPlane {
     }
 
     bridge.ws = ws
-    ws.binaryType = 'arraybuffer'
 
     // Dial errors before the upgrade completes surface on `error`, not `close`.
-    ws.addEventListener('error', () => {
+    ws.on('error', (error) => {
       if (bridge.open) return
+      this.options.log(`bridge ${id} dial error: ${error.message}`)
       if (this.bridges.has(id)) this.bridges.delete(id)
       this.options.send({ t: T.WS_OPEN_ERR, id, reason: 'upstream connection failed' })
     })
 
-    ws.addEventListener('open', () => {
+    ws.on('open', () => {
       bridge.open = true
       this.options.send({ t: T.WS_OPEN_OK, id })
     })
 
-    ws.addEventListener('message', (event) => {
+    ws.on('message', (data, isBinary) => {
       if (!bridge.open) return
-      const data = event.data
-      if (typeof data === 'string') {
-        this.options.send({ t: T.WS_FRAME, id, opcode: 1, dataBase64: Buffer.from(data, 'utf8').toString('base64') })
-        return
-      }
-      if (data instanceof ArrayBuffer) {
-        this.options.send({ t: T.WS_FRAME, id, opcode: 2, dataBase64: Buffer.from(data).toString('base64') })
-        return
-      }
-      // Blob (only when binaryType is not arraybuffer — defensive).
-      void data.arrayBuffer().then((buffer: ArrayBuffer) => {
-        this.options.send({ t: T.WS_FRAME, id, opcode: 2, dataBase64: Buffer.from(buffer).toString('base64') })
+      const bytes = Buffer.isBuffer(data)
+        ? data
+        : Array.isArray(data)
+          ? Buffer.concat(data)
+          : Buffer.from(data)
+      this.options.send({
+        t: T.WS_FRAME,
+        id,
+        opcode: isBinary ? 2 : 1,
+        dataBase64: bytes.toString('base64'),
       })
     })
 
-    ws.addEventListener('close', (event) => {
+    ws.on('close', (code, reason) => {
       this.bridges.delete(id)
       if (bridge.phoneClosed) return
-      this.options.send({ t: T.WS_CLOSE, id, code: event.code === 1006 ? 1011 : event.code, reason: event.reason ?? 'peer closed' })
+      this.options.send({ t: T.WS_CLOSE, id, code: code === 1006 ? 1011 : code, reason: reason ?? 'peer closed' })
     })
   }
 }
