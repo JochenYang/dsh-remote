@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-relay",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Self-hosted relay server for the dsh-remote mobile tunnel: pairing, challenge-response auth, HTTP reverse proxy and WebSocket frame bridging between a phone browser and the dsh desktop host.",
   "type": "module",
   "main": "dist/index.js",

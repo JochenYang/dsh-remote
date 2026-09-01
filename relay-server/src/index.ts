@@ -444,6 +444,12 @@ export class RelayServer {
     const ctx = this.hosts.get(ws)
     if (ctx === undefined) return
     this.hosts.delete(ws)
+    // A displaced socket (its replacement already registered and closed it)
+    // must not unregister the device the *newer* host now holds — otherwise a
+    // reconnect race leaves the relay with a live host socket (ping/pong
+    // healthy) that the phone routes never reach (409 forever).
+    const current = this.sessions.getHost(ctx.session.deviceId)
+    if (current !== null && current.ws !== ws) return
     this.sessions.unregisterHost(ctx.session.deviceId)
     this.proxy.purgeHost(ctx.session)
     this.bridge.purgeDevice(ctx.session.deviceId)
@@ -793,9 +799,14 @@ export class RelayServer {
       if (now - ctx.session.lastSeen > PING_TIMEOUT_MS) {
         this.log(`host timeout: ${ctx.session.deviceId.slice(0, 8)}…`)
         this.hosts.delete(ws)
-        this.sessions.unregisterHost(ctx.session.deviceId)
-        this.proxy.purgeHost(ctx.session)
-        this.bridge.purgeDevice(ctx.session.deviceId)
+        // Same guard as onHostClosed: a stale displaced socket must not evict
+        // the device's registered (newer) host.
+        const current = this.sessions.getHost(ctx.session.deviceId)
+        if (current === null || current.ws === ws) {
+          this.sessions.unregisterHost(ctx.session.deviceId)
+          this.proxy.purgeHost(ctx.session)
+          this.bridge.purgeDevice(ctx.session.deviceId)
+        }
         try { ws.close(4001, 'timeout') } catch { /* gone */ }
         continue
       }

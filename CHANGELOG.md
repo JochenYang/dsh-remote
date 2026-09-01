@@ -6,6 +6,18 @@ each package versioned independently (semver).
 
 ## relay-server
 
+### 0.1.3 - 2026-09-01
+
+#### Fixed
+
+- Host reconnect race no longer strands a device as offline: a displaced host
+  socket's `close` (or heartbeat timeout) used to `unregisterHost(deviceId)`
+  unconditionally, wiping the *newer* host that had just replaced it. With two
+  desktop instances flapping on the same deviceId, the relay then had a healthy
+  live host socket (ping/pong fine) that phone routes never reached — phone
+  requests answered `409 host offline` indefinitely. Both teardown paths now
+  only unregister when the closing socket is still the device's registered host.
+
 ### 0.1.2 - 2026-08-29
 
 #### Added
@@ -37,6 +49,40 @@ each package versioned independently (semver).
   sessions, admin console, JSONL store (sha256-only on disk).
 
 ## dsh-remote
+
+### 0.1.11 - 2026-08-31
+
+#### Fixed
+
+- Newer dsh builds guard the web app behind an authority-bound browser session
+  cookie (browser token authentication): the index goes through
+  `authorizeIndex`, and `/api/*` RPC plus the `/api/remote.mux` event WebSocket
+  answer 401 for a trusted-but-unauthenticated request. The host plugin proxied
+  the phone as a plain loopback client with no cookie, so every phone request
+  hit that 401. The plugin now mints the loopback cookie in-process from the
+  Connection launch token and attaches it to every upstream HTTP request and the
+  local WebSocket dial; a 401 triggers one refresh-and-retry. The launch token
+  never leaves the desktop. Older harness builds have no browser-auth service,
+  so the auth owner stays a pass-through and behavior is unchanged.
+- The local WebSocket dial now uses the `ws` client (to attach the cookie on the
+  upgrade). `ws` stays an external runtime dependency and a `dependencies`
+  entry — the plugin bundle is ESM, and bundling the CJS `ws` package turns its
+  `require('events'/*)` builtins into unsupported dynamic requires. The relay
+  ships the same `ws`-external pattern.
+- Upstream bodies are read through the fetch layer, which transparently decodes
+  gzip/deflate/br — the host previously forwarded the decoded bytes *with* the
+  original `content-encoding` header, so every proxied response (index HTML
+  included) failed decompression on the phone (`Z_DATA_ERROR`) and the page
+  never rendered. The plane now requests `accept-encoding: identity` upstream
+  and strips `content-encoding` from the response head, so forwarded frames are
+  plain bytes end to end.
+- Cookie minting called `connection.authorizeIndex` as a *detached* function —
+  cordis-traced service methods lose `this` there (`this.browserAuth` /
+  `this.launchToken` become undefined), which threw inside every proxied
+  request: the host answered `http-err UPSTREAM_DOWN` and the phone saw a 502
+  on every request. The mint now calls the methods receiver-bound on the raw
+  `browserAuth` instance (unwrapped through the `cordis.original` symbol) and
+  swallows a mint failure to pass-through instead of 502.
 
 ### 0.1.10 - 2026-08-31
 
