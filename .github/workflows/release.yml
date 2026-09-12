@@ -30,9 +30,17 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install dsh-remote deps
+        working-directory: dsh-remote
+        run: pnpm install --frozen-lockfile
+
       - name: Pack dsh-remote
         working-directory: dsh-remote
         run: pnpm run pack
+
+      - name: Install relay-server deps
+        working-directory: relay-server
+        run: pnpm install --frozen-lockfile
 
       - name: Pack relay-server
         working-directory: relay-server
