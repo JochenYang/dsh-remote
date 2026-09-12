@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Neutral "link nodes" mark: two nodes joined by a bar inside a rounded
+         square. Abstract on purpose — no whale, no DeepSeek trade dress. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeWidth="6"
+        android:strokeColor="@color/brand_mark"
+        android:strokeLineCap="round"
+        android:pathData="M30,22h48a8,8 0 0 1 8,8v48a8,8 0 0 1 -8,8H30a8,8 0 0 1 -8,-8V30a8,8 0 0 1 8,-8z" />
+    <path
+        android:fillColor="@color/brand_mark"
+        android:pathData="M40,54m-9,0a9,9 0 1,0 18,0a9,9 0 1,0 -18,0" />
+    <path
+        android:fillColor="@color/brand_mark"
+        android:pathData="M68,54m-9,0a9,9 0 1,0 18,0a9,9 0 1,0 -18,0" />
+    <path
+        android:fillColor="@color/brand_mark"
+        android:pathData="M40,51h28v6H40z" />
+</vector>

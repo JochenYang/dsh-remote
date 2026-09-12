@@ -132,6 +132,14 @@ host 在本地使用 Node 原生 `WebSocket`（globalThis，Node 22+）连接
 > 下发 HttpOnly cookie `dsh-relay=<sessionId>`，后续浏览器对同一 origin 自动携带该 cookie，
 > relay 由 cookie 识别手机身份并把 `x-dsh-relay-token` 附加到此手机发起的全部
 > upgrade / fetch 转发中。（实现细节以 relay-server 为准，契约只约束「身份可追溯到手机会话」这一语义。）
+>
+> **原生客户端接入**：`/d/<deviceId>/*` 对非浏览器客户端同样有效。流程为
+> `POST /pair` 取 `deviceId/challenge/token` → 本地计算 HMAC-SHA256 响应 →
+> 经 `/ws?role=phone` 的 `hello` 完成挑战-响应（同时得知 host 是否在线）→
+> 带 `x-dsh-relay-token` 调 `/d/<deviceId>/__claim` 换 cookie。
+> 此后 HTTP 与 WS upgrade 均携带该 cookie；`/api/*` 与 `/events/*` 透传 dsh 原生命名，
+> App 直接复用 dsh 的 `client-request` 包络，无需 dsh 侧 Bearer 凭证
+> （host 插件为每条上游请求补浏览器会话 cookie，与浏览器流一致）。
 
 ## 9. Relay 数据存储（JSONL，原子追加）
 

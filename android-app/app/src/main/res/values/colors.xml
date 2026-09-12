@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher + brand-mark colors. Theme-independent by design: the launcher
+         icon is a fixed asset, so these stay in Primitive as an explicit
+         exception (not Semantic tokens). -->
+    <color name="ic_launcher_background">#1A2140</color>
+    <color name="brand_mark">#9DAEFF</color>
+</resources>

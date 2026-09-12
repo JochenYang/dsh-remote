@@ -24,6 +24,7 @@
 |---|---|---|
 | [`relay-server/`](./relay-server/) | 自托管中继：配对认证、HTTP 反向代理、WS 帧桥接、管理台。部署在公网 VPS（TLS 之后）。 | [简体中文](./relay-server/README.md) · [English](./relay-server/README.en.md) |
 | [`dsh-remote/`](./dsh-remote/) | 桌面 host 插件：注册到中继，把手机流量桥接到本地 dsh web server；内置移动适配层与设置页。 | [简体中文](./dsh-remote/README.md) · [English](./dsh-remote/README.en.md) |
+| [`android-app/`](./android-app/) | 原生 Android 客户端（开发中）：配对＋会话＋聊天骨架，直连 relay 代理面；设计方向见需求确认记录。 | — |
 | [`docs/PROTOCOL.md`](./docs/PROTOCOL.md) | 两端共同遵守的隧道协议契约（v1）：帧格式、握手、安全边界。 | — |
 
 ## 架构

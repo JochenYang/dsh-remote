@@ -1,0 +1,8 @@
+local.properties
+.gradle/
+build/
+.idea/
+*.iml
+
+# Third-party reference checkout (has its own .git; never commit)
+deepseek-harness-mobile/
