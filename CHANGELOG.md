@@ -50,6 +50,18 @@ each package versioned independently (semver).
 
 ## dsh-remote
 
+### 0.2.1 - 2026-09-12
+
+#### Fixed
+
+- The client half targeted `@deepseek-ai/dsh-client-runtime`, which no current
+  dsh ships — the browser half failed to mount and the "手机连接" settings
+  section never appeared. The client now targets the packages dsh 0.1.5-rc.2
+  actually provides: `dsh-client-modules`, `dsh-client-ui-renderer` (the
+  `ctx.slots` Context merge), and `dsh-client-ui-settings` (the
+  `settings.section` SlotMap). `inject` in the manifest and the
+  `tsconfig.client.json` paths were updated to match.
+
 ### 0.1.11 - 2026-08-31
 
 #### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote",
-  "version": "0.1.11",
+  "version": "0.2.1",
   "description": "Mobile remote plugin for DeepSeek Harness: the desktop host agent of the dsh-remote tunnel. Bridges a phone browser to the local dsh web server through a self-hosted relay (HTTP reverse proxy + WebSocket frame forwarding).",
   "type": "module",
   "main": "lib/index.js",
@@ -21,7 +21,9 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime"
+        "@deepseek-ai/dsh-client-modules",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
     }

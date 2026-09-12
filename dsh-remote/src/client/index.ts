@@ -5,7 +5,9 @@
  * injection semantics are required here.
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
+// Type-only: ctx.slots (SlotRegistry) Context merge lives in ui-renderer.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: settings.section SlotMap declaration lives in ui-settings.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { RemoteSection } from './RemoteSection'
@@ -13,7 +15,7 @@ import { RemoteSection } from './RemoteSection'
 /** Client services the fiber waits for before apply (`ctx.slots` requires inject). */
 export const inject = ['slots']
 
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: Context): void {
   // Wait for the settings shell's section declaration before registering.
   ctx.slots.inject('settings.section', () =>
     ctx.slots.register(
