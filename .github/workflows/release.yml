@@ -56,11 +56,7 @@ jobs:
               VER="${TAG#dsh-remote@}"
               NAME="dsh-remote ${VER}"
               ASSET="dsh-remote/dsh-remote-${VER}.tgz"
-              INSTALL="\`\`\`
-dsh plugin --profile web add ./dsh-remote-${VER}.tgz
-\`\`\`
-
-Restart DSH after installing."
+              INSTALL="$(printf '```\ndsh plugin --profile web add ./dsh-remote-%s.tgz\n```\n\nRestart DSH after installing.' "${VER}")"
               ;;
             relay-server@*)
               PKG=relay-server; SECTION=relay-server
@@ -75,11 +71,7 @@ Restart DSH after installing."
               VER="${TAG#v}"
               NAME="dsh-remote ${VER}"
               ASSET="dsh-remote/dsh-remote-${VER}.tgz"
-              INSTALL="\`\`\`
-dsh plugin --profile web add ./dsh-remote-${VER}.tgz
-\`\`\`
-
-Restart DSH after installing."
+              INSTALL="$(printf '```\ndsh plugin --profile web add ./dsh-remote-%s.tgz\n```\n\nRestart DSH after installing.' "${VER}")"
               ;;
             *)
               echo "unknown tag shape: ${TAG}" >&2
