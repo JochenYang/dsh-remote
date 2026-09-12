@@ -8,7 +8,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white&style=flat-square)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-11.7-F69220?logo=pnpm&logoColor=white&style=flat-square)](https://pnpm.io/)
 [![Protocol](https://img.shields.io/badge/tunnel_protocol-v1-4c6ef5?style=flat-square)](../docs/PROTOCOL.md)
-[![Version](https://img.shields.io/badge/version-0.1.2-4c6ef5?style=flat-square)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.1.3-4c6ef5?style=flat-square)](./package.json)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 [简体中文](README.md) | English
