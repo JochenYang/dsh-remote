@@ -72,9 +72,16 @@ export const PAIR_GLOBAL_FAIL_MAX = 60
 /** Cap on a body the relay itself parses (`/pair`, `/admin/*`). */
 export const MAX_CONTROL_BODY_BYTES = 4 * 1024
 
-/** WebSocket `maxPayload`. One logical frame is a 64 KiB payload base64-inflated
- * (4/3) inside a JSON envelope, so the transport bound sits above it. */
-export const MAX_WIRE_FRAME_BYTES = Math.ceil((MAX_FRAME_BYTES * 4) / 3) + 2 * 1024
+/** Wire-level guard for one WebSocket message in either direction.
+ *
+ * The protocol's 64 KiB cap applies to `http-*` frames, which the planes
+ * chunk themselves. A `ws-frame` is different: it carries one whole dsh
+ * WebSocket message (base64 + JSON envelope, no fragmentation), and dsh's own
+ * event/RPC messages are not bounded by our protocol — a single live event can
+ * be hundreds of kilobytes. Applying the 64 KiB cap here dropped the host
+ * connection with 1009 mid-stream, which reads as "host offline" to every
+ * phone. This bound only stops a runaway payload. */
+export const MAX_WIRE_FRAME_BYTES = 16 * 1024 * 1024
 
 /** A bridged socket must be confirmed by the host within this window; the phone
  * may have queued data meanwhile, and an unanswered `ws-open` would pin the

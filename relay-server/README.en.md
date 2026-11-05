@@ -8,7 +8,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white&style=flat-square)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-11.7-F69220?logo=pnpm&logoColor=white&style=flat-square)](https://pnpm.io/)
 [![Protocol](https://img.shields.io/badge/tunnel_protocol-v1-4c6ef5?style=flat-square)](../docs/PROTOCOL.md)
-[![Version](https://img.shields.io/badge/version-0.1.4-4c6ef5?style=flat-square)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.1.5-4c6ef5?style=flat-square)](./package.json)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 [简体中文](README.md) | English
@@ -41,9 +41,9 @@ Phone browser ──HTTPS──> relay-server (this service) ──WS frames─�
   order is stream order (SSE/blob untouched); immediate 409 when the host is
   offline; 10s no-progress watchdog.
 - **WebSocket passthrough**: event-stream upgrades (currently
-  `/api/remote.mux`) are relayed as `ws-open/ws-frame/ws-close` frames. Phone
-  frames above 64 KiB close the bridge (1009), and an unanswered host handshake
-  closes it after 15s.
+  `/api/remote.mux`) are relayed as `ws-open/ws-frame/ws-close` frames. A
+  `ws-frame` carries one whole dsh message (no fragmentation, 16 MiB wire
+  guard), and an unanswered host handshake closes the bridge after 15s.
 - **Admin console**: device overview, pairing codes with countdown, token
   fingerprints, disconnect / revoke / remove, all/online/offline filters;
   single-active-token policy (re-pairing displaces the previous token).

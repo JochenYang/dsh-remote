@@ -139,6 +139,21 @@ async function main() {
   const host = await hostRegister()
   check('host hello-ok + pair code issued', /^\d{6}$/.test(host.code))
 
+  // The dsh UI links its manifest relatively, so the browser asks for it under
+  // the device path without credentials; it must not fall through to /pair.
+  const deviceManifest = await fetch(`${BASE}/d/${DEVICE_ID}/manifest.webmanifest`)
+  check('device-path manifest is served without a cookie',
+    deviceManifest.ok && (deviceManifest.headers.get('content-type') || '').includes('manifest+json'),
+    `status=${deviceManifest.status}`)
+
+  // A `ws-frame` carries one whole dsh message, and dsh does not bound those:
+  // an oversized frame must not kill the host connection (0.1.4 closed it with
+  // 1009, which read as "host offline" to every phone).
+  host.ws.send(JSON.stringify({ t: 'ws-frame', id: 999, opcode: 2, dataBase64: 'A'.repeat(150_000) }))
+  await sleep(400)
+  check('host survives a 150 KiB frame', host.ws.readyState === WebSocket.OPEN,
+    `readyState=${host.ws.readyState}`)
+
   const pair1 = await post('/pair', { code: host.code })
   check('first pair ok', pair1.json?.ok === true)
   const pair2 = await post('/pair', { code: host.code })
@@ -170,14 +185,17 @@ async function main() {
   check('small phone frame reaches the host', delivered)
   bridge.close()
 
-  const oversizedClose = await new Promise((resolve) => {
-    const big = new WebSocket(`ws://127.0.0.1:${PORT}/d/${DEVICE_ID}/events/mux`, { headers: { cookie: phoneCookie } })
-    const timer = setTimeout(() => resolve(-1), 5000)
-    big.on('open', () => big.send(Buffer.alloc(70 * 1024)))
-    big.on('close', (code) => { clearTimeout(timer); resolve(code) })
-    big.on('error', () => { /* the close event carries the verdict */ })
-  })
-  check('70 KiB phone frame is refused with 1009', oversizedClose === 1009, `code=${oversizedClose}`)
+  // The old 64 KiB close-on-oversize was the regression: a dsh message of this
+  // size is legitimate and must travel whole.
+  const bigBridge = await openBridge(phoneCookie)
+  const bigPayload = Buffer.alloc(70 * 1024, 0x41)
+  bigBridge.send(bigPayload)
+  const bigDelivered = await waitFor(() => hostInbox.some(
+    (frame) => frame.t === 'ws-frame' && typeof frame.dataBase64 === 'string'
+      && Buffer.from(frame.dataBase64, 'base64').length === bigPayload.length,
+  ))
+  check('70 KiB phone frame reaches the host', bigDelivered)
+  bigBridge.close()
 
   const removeOnline = await post('/admin/api/remove', { deviceId: DEVICE_ID }, { cookie: adminCookie })
   check('remove online refused 409', removeOnline.status === 409 && removeOnline.json?.error?.code === 'HOST_ONLINE')

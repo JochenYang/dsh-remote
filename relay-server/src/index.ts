@@ -149,10 +149,12 @@ export class RelayServer {
       return this.plain(res, 405, 'method not allowed')
     }
 
-    // The dsh web UI references the manifest root-absolute, and browsers fetch
-    // it with credentials omitted — before the device routes and without any
-    // cookie, so it cannot be proxied; answer with the static relay manifest.
-    if (url.pathname === '/manifest.webmanifest') {
+    // The dsh web UI links its manifest relatively, so behind `/d/<deviceId>/`
+    // the browser asks for `/d/<id>/manifest.webmanifest`. Browsers fetch
+    // manifests without credentials, so device routing would answer 302 to
+    // /pair (HTML), and the console reports a manifest syntax error. Answer the
+    // relay's own manifest on any such path, before the device routes.
+    if (url.pathname === '/manifest.webmanifest' || url.pathname.endsWith('/manifest.webmanifest')) {
       if (method !== 'GET' && method !== 'HEAD') return this.plain(res, 405, 'method not allowed')
       const bytes = Buffer.from(manifestJson())
       res.writeHead(200, {

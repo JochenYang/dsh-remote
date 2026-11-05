@@ -12,9 +12,9 @@
 import type { IncomingMessage } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
 import {
-  MAX_FRAME_BYTES,
   MAX_PENDING_FRAMES,
   MAX_PHONE_BUFFER_BYTES,
+  MAX_WIRE_FRAME_BYTES,
   T,
   TOKEN_HEADER,
   WS_OPEN_TIMEOUT_MS,
@@ -107,11 +107,11 @@ export class WsBridge {
 
       phoneWs.on('message', (data: Buffer, isBinary: boolean) => {
         if (bridge.closed) return
-        // `maxPayload` on the server only bounds the wire size of one message;
-        // the protocol cap is 64 KiB of payload, and everything above it is a
-        // peer the host should not have to defend against.
-        if (data.length > MAX_FRAME_BYTES) {
-          this.log(`ws-bridge: phone frame ${data.length}B exceeds ${MAX_FRAME_BYTES}B on #${id}; closing`)
+        // `ws-frame` carries one whole dsh WebSocket message — the 64 KiB
+        // protocol cap covers `http-*` frames, not these. Only a runaway
+        // payload is refused, and the host must not have to defend against it.
+        if (data.length > MAX_WIRE_FRAME_BYTES) {
+          this.log(`ws-bridge: phone frame ${data.length}B exceeds ${MAX_WIRE_FRAME_BYTES}B on #${id}; closing`)
           this.failBridge(bridge, 1009, 'frame too large')
           return
         }

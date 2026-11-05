@@ -6,6 +6,22 @@ each package versioned independently (semver).
 
 ## relay-server
 
+### 0.1.5 - 2026-11-05
+
+#### Fixed
+
+- `ws-frame` is not an `http-*` frame: it carries one whole dsh WebSocket
+  message with no fragmentation, so the 64 KiB protocol cap does not apply to
+  it. 0.1.4 enforced that cap as `maxPayload` and closed the **host** socket
+  with 1009 whenever dsh emitted a larger message — the relay then reported the
+  device offline, every phone API call answered 409 and the web client
+  reconnected in a loop. The wire guard is now 16 MiB (runaway payloads only)
+  and the phone-side close-on-oversize is gone.
+- The web manifest is also served on `/d/<deviceId>/manifest.webmanifest`. dsh
+  links it relatively and browsers fetch manifests without credentials, so the
+  request fell through to device routing, answered 302 `/pair`, and the console
+  reported a manifest syntax error.
+
 ### 0.1.4 - 2026-11-05
 
 #### Fixed

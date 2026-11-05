@@ -24,7 +24,8 @@
 - 所有帧均为 UTF-8 JSON 文本，必含字段 `t`（type）。未知帧类型一律忽略并记日志。
 - 每个 WebSocket 连接生命周期：`hello` 认证 → 业务帧 → `ping/pong` 保活 → 关闭。
 - 字节数组统一 `dataBase64`（Base64 字符串）。
-- 编解码双方约定：WebSocket 每帧 ≤ 64 KiB；HTTP 大 body 分帧，见 §5。
+- 编解码双方约定：`http-*` 帧 ≤ 64 KiB（大 body 分帧，见 §5）；`ws-frame` 承载
+  dsh 的整条 WebSocket 消息、不分片，只受 wire guard 约束（16 MiB）。
 
 ## 3. Host 注册（桌面端 → relay）
 

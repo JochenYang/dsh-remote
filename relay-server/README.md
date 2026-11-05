@@ -8,7 +8,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white&style=flat-square)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-11.7-F69220?logo=pnpm&logoColor=white&style=flat-square)](https://pnpm.io/)
 [![Protocol](https://img.shields.io/badge/tunnel_protocol-v1-4c6ef5?style=flat-square)](../docs/PROTOCOL.md)
-[![Version](https://img.shields.io/badge/version-0.1.4-4c6ef5?style=flat-square)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.1.5-4c6ef5?style=flat-square)](./package.json)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 简体中文 | [English](README.en.md)
@@ -37,8 +37,8 @@
 - **HTTP 反向代理**：请求/响应按 ≤64KiB 帧搬运，帧序即流序（SSE / blob 不受影响）；
   host 离线立即 409；10s 无进度防悬挂。
 - **WebSocket 透传**：事件流 upgrade（当前为 `/api/remote.mux`）透传为
-  `ws-open/ws-frame/ws-close` 帧；手机方向超过 64KiB 的帧直接断开（1009），
-  host 启动握手 15s 无应答也断开。
+  `ws-open/ws-frame/ws-close` 帧；`ws-frame` 承载 dsh 的整条消息（不分片，单帧
+  上限 16 MiB），host 启动握手 15s 无应答会断开。
 - **管理台**：设备总览、配对码与有效期、令牌指纹、断开手机 / 吊销设备 / 删除设备、
   全部/在线/离线筛选；单活跃令牌策略（重新配对自动替换旧令牌）。
 - **令牌卫生**：单设备仅一个活跃令牌；孤儿与 30 天前已吊销的令牌加载时自动清理；
