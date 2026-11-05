@@ -6,6 +6,7 @@
  */
 const { WebSocket } = require('ws')
 const crypto = require('node:crypto')
+const http = require('node:http')
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const os = require('node:os')
@@ -70,6 +71,67 @@ async function post(path, body, headers = {}) {
   return { status: res.status, json, headers: res.headers }
 }
 
+/**
+ * POST over a brand-new TCP connection — the shape a code guesser has. The
+ * pairing limit must key on the client address, not on this connection.
+ */
+function postRaw(pathname, payload, extraHeaders = {}) {
+  const body = typeof payload === 'string' ? payload : JSON.stringify(payload)
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      host: '127.0.0.1',
+      port: PORT,
+      path: pathname,
+      method: 'POST',
+      agent: false,
+      headers: {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body),
+        ...extraHeaders,
+      },
+    }, (res) => {
+      let text = ''
+      res.on('data', (chunk) => { text += chunk.toString('utf8') })
+      res.on('end', () => {
+        let json = null
+        try { json = JSON.parse(text) } catch { /* plain-text answer */ }
+        resolve({ status: res.statusCode, json, text })
+      })
+    })
+    request.on('error', reject)
+    request.end(body)
+  })
+}
+
+/** Frames the fake host received, in arrival order. */
+const hostInbox = []
+
+/** Ack every `ws-open` so the bridge becomes ready, and record what arrives. */
+function watchHost(ws) {
+  ws.on('message', (raw) => {
+    const frame = JSON.parse(raw.toString())
+    hostInbox.push(frame)
+    if (frame.t === 'ws-open') ws.send(JSON.stringify({ t: 'ws-open-ok', id: frame.id }))
+  })
+}
+
+async function waitFor(predicate, tries = 60) {
+  for (let i = 0; i < tries; i++) {
+    if (predicate()) return true
+    await sleep(50)
+  }
+  return false
+}
+
+function openBridge(cookie) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/d/${DEVICE_ID}/events/mux`, { headers: { cookie } })
+    const timer = setTimeout(() => reject(new Error('bridge open timeout')), 5000)
+    ws.on('open', () => { clearTimeout(timer); resolve(ws) })
+    ws.on('error', (error) => { clearTimeout(timer); reject(error) })
+  })
+}
+
 async function main() {
   relayProc = relay()
   await waitHttp()
@@ -91,6 +153,32 @@ async function main() {
   check('device listed with single active token', dev?.tokenActive === 1 && dev?.tokenTotal === 2,
     `active=${dev?.tokenActive} total=${dev?.tokenTotal}`)
 
+  // ---- websocket bridge: normal frames pass, oversized ones close --------
+  watchHost(host.ws)
+  const claim = await fetch(`${BASE}/d/${DEVICE_ID}/__claim`, {
+    method: 'POST',
+    headers: { 'x-dsh-relay-token': pair2.json.token },
+  })
+  const phoneCookie = (claim.headers.get('set-cookie') || '').split(';')[0]
+  check('phone claim issues a session cookie', claim.ok && phoneCookie.startsWith('dsh-relay='))
+
+  const bridge = await openBridge(phoneCookie)
+  bridge.send('ping')
+  const delivered = await waitFor(() => hostInbox.some(
+    (frame) => frame.t === 'ws-frame' && Buffer.from(frame.dataBase64, 'base64').toString('utf8') === 'ping',
+  ))
+  check('small phone frame reaches the host', delivered)
+  bridge.close()
+
+  const oversizedClose = await new Promise((resolve) => {
+    const big = new WebSocket(`ws://127.0.0.1:${PORT}/d/${DEVICE_ID}/events/mux`, { headers: { cookie: phoneCookie } })
+    const timer = setTimeout(() => resolve(-1), 5000)
+    big.on('open', () => big.send(Buffer.alloc(70 * 1024)))
+    big.on('close', (code) => { clearTimeout(timer); resolve(code) })
+    big.on('error', () => { /* the close event carries the verdict */ })
+  })
+  check('70 KiB phone frame is refused with 1009', oversizedClose === 1009, `code=${oversizedClose}`)
+
   const removeOnline = await post('/admin/api/remove', { deviceId: DEVICE_ID }, { cookie: adminCookie })
   check('remove online refused 409', removeOnline.status === 409 && removeOnline.json?.error?.code === 'HOST_ONLINE')
 
@@ -109,6 +197,25 @@ async function main() {
   adminCookie = (relogin.headers.get('set-cookie') || '').split(';')[0]
   state = await (await fetch(`${BASE}/admin/api/state`, { headers: { cookie: adminCookie } })).json()
   check('device stays deleted after restart', !state.devices.some((d) => d.deviceId === DEVICE_ID))
+
+  // ---- pairing limits + control-body caps (fresh process) ----------------
+  const guesses = []
+  for (let i = 0; i < 5; i++) guesses.push(await postRaw('/pair', { code: '000000' }))
+  check('five guesses reach the code check', guesses.every((r) => r.status === 404),
+    guesses.map((r) => r.status).join(','))
+
+  const limited = await postRaw('/pair', { code: '000000' })
+  check('sixth guess from one address is 429',
+    limited.status === 429 && limited.json?.error?.code === 'RATE_LIMITED', `status=${limited.status}`)
+
+  const forwarded = await postRaw('/pair', { code: '000000' }, { 'x-forwarded-for': '203.0.113.9' })
+  check('forwarded client address gets its own bucket', forwarded.status === 404, `status=${forwarded.status}`)
+
+  const hugeBody = await postRaw('/pair', { code: '1'.repeat(8 * 1024) }, { 'x-forwarded-for': '203.0.113.10' })
+  check('oversized pair body is refused with 413', hugeBody.status === 413, `status=${hugeBody.status}`)
+
+  const hugeAdmin = await postRaw('/admin/login', { password: 'x'.repeat(8 * 1024) }, { 'x-forwarded-for': '203.0.113.11' })
+  check('oversized admin body is refused with 413', hugeAdmin.status === 413, `status=${hugeAdmin.status}`)
 
   const page = await fetch(`${BASE}/admin`).then((r) => r.text())
   check('admin page has remove action + tabs', page.includes('删除设备') && page.includes('data-filter'))

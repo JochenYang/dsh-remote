@@ -32,14 +32,17 @@ Phone browser ──HTTPS──> relay-server (this service) ──WS frames─�
 
 ## Features
 
-- **Pairing auth**: 6-digit code (10-minute TTL, 5 attempts/min per device+IP)
-  exchanged for a one-shot challenge (60s); the WebSocket completes the
-  challenge-response; token-bearing silent reconnect supported.
+- **Pairing auth**: 6-digit code (10-minute TTL; 5 attempts/min per real
+  client address, 20 consecutive failures lock that address for 15 minutes,
+  plus a relay-wide failure budget) exchanged for a one-shot challenge (60s);
+  the WebSocket completes the challenge-response; token-bearing silent
+  reconnect supported.
 - **HTTP reverse proxy**: requests/responses move in ≤64 KiB frames — frame
   order is stream order (SSE/blob untouched); immediate 409 when the host is
   offline; 10s no-progress watchdog.
 - **WebSocket passthrough**: `/events/*` upgrades are relayed as
-  `ws-open/ws-frame/ws-close` frames.
+  `ws-open/ws-frame/ws-close` frames. Phone frames above 64 KiB close the
+  bridge (1009), and an unanswered host handshake closes it after 15s.
 - **Admin console**: device overview, pairing codes with countdown, token
   fingerprints, disconnect / revoke / remove, all/online/offline filters;
   single-active-token policy (re-pairing displaces the previous token).
@@ -182,7 +185,7 @@ available.
 ## Admin Console (/admin)
 
 - **Enable**: `--admin-token`; **login**: open `/admin`; sessions last 24h
-  (HttpOnly + SameSite=Strict, dedicated 5/min rate limit).
+  (HttpOnly + SameSite=Strict, dedicated 5/min rate limit with failure lockout).
 
 | Capability | Description |
 |---|---|

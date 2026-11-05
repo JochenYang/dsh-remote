@@ -12,8 +12,11 @@ public issues for anything that looks exploitable.
   register or take over a host identity on that relay. Keep it secret, rotate
   it if it leaks.
 - Pairing uses 6-digit codes with a **one-shot challenge-response**
-  (HMAC-SHA256, 60s TTL, rate-limited). Only `sha256(code)` / `sha256(token)`
-  are persisted; codes and tokens never reach the logs.
+  (HMAC-SHA256, 60s TTL) and attempt limits keyed on the real client address:
+  the TLS terminator's `X-Forwarded-For` is honoured only on a loopback peer
+  and only for its last hop, so a directly exposed relay never trusts the
+  header. Only `sha256(code)` / `sha256(token)` are persisted; codes and tokens
+  never reach the logs.
 - **Deploy the relay behind TLS** (caddy/nginx examples in the READMEs). Plain
   HTTP also degrades phone-side Secure Context APIs.
 - The `dsh-remote` plugin forwards tunnel traffic to the local dsh web server

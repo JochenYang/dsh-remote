@@ -48,7 +48,8 @@ URI：`wss://<relay>/ws?role=host`
 ## 4. 手机认证（挑战-响应 + 长令牌）
 
 **Step 1 — 取挑战（HTTP）**：手机 POST `https://<relay>/pair`，body `{ "code": "123456" }`。
-relay 校验配对码（10 分钟 TTL、设备/IP 5 次/分钟限速），成功返回：
+relay 校验配对码（10 分钟 TTL；按真实客户端 IP 5 次/分钟，连续 20 次失败锁定
+15 分钟，另有全局限流兜底），成功返回：
 
 ```json
 { "ok": true, "deviceId": "…", "challenge": "random-32-byte-hex", "challengeTtlMs": 60000, "token": "random-32-byte-hex" }
@@ -157,7 +158,9 @@ host 首次注册（`hello` 带 `hostToken` 且 deviceId 未知）→ 自动注�
 
 - relay 必须部署于 TLS 之后（文档给出 caddy/nginx 反代示例）；帧内无明文密钥。
 - `HOST_TOKEN` 是 relay 侧唯一信任边界：谁持有它谁可注册/接管该 relay 上的 host 身份（自托管前提）。
-- 挑战-响应防重放：challenge 一次性、60s TTL；code 10 分钟 TTL、限速 5 次/分/设备+IP。
+- 挑战-响应防重放：challenge 一次性、60s TTL；code 10 分钟 TTL；配对尝试按
+  真实客户端地址限速（5 次/分，连续 20 次失败锁 15 分钟，另有全局失败预算）。
+  `X-Forwarded-For` 只在 TCP 对端为 loopback（TLS 终结器）时读取，且只取最后一跳。
 - 仓库内不存 code 明文（存 sha256）；token 落盘只存 sha256。
 - 默认每 deviceId 仅允许 1 个并发手机；重新配对（再次 POST `/pair`）会自动替换该设备上一个活跃令牌，旧手机需重新配对；host 可随时 `revoke`。
 - 日志脱敏：永不打印 challenge/response/token/code。

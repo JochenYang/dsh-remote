@@ -11,7 +11,14 @@
 
 import type { IncomingMessage } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
-import { MAX_FRAME_BYTES, T, TOKEN_HEADER } from './const.ts'
+import {
+  MAX_FRAME_BYTES,
+  MAX_PENDING_FRAMES,
+  MAX_PHONE_BUFFER_BYTES,
+  T,
+  TOKEN_HEADER,
+  WS_OPEN_TIMEOUT_MS,
+} from './const.ts'
 import type { HostSession, PhoneSession, Sessions } from './sessions.ts'
 
 type Frame = Record<string, unknown>
@@ -26,6 +33,8 @@ interface Bridge {
   /** Phone data received before `ws-open-ok`; replayed in order on ready. */
   pending: Array<{ opcode: 1 | 2; payload: string | Buffer }>
   closed: boolean
+  /** Fires when the host never answers `ws-open`; see {@link failBridge}. */
+  openTimer: ReturnType<typeof setTimeout> | undefined
 }
 
 export class WsBridge {
@@ -61,8 +70,23 @@ export class WsBridge {
 
     // Complete the phone-side handshake first; the browser then streams in.
     this.wss.handleUpgrade(req, socket, head, (phoneWs) => {
-      const bridge: Bridge = { id, deviceId, host, phone: phoneWs, ready: false, pending: [], closed: false }
+      const bridge: Bridge = {
+        id,
+        deviceId,
+        host,
+        phone: phoneWs,
+        ready: false,
+        pending: [],
+        closed: false,
+        openTimer: undefined,
+      }
       this.bridges.set(id, bridge)
+      // An unanswered `ws-open` would pin the bridge (and whatever the phone
+      // queued) for the life of the process, so the handshake gets a deadline.
+      bridge.openTimer = setTimeout(() => {
+        this.log(`ws-bridge: host did not confirm ws-open #${id} within ${WS_OPEN_TIMEOUT_MS}ms`)
+        this.failBridge(bridge, 1011, 'host handshake timeout')
+      }, WS_OPEN_TIMEOUT_MS)
 
       // Pass the phone's handshake headers (plus our identity marker) so the
       // host can mirror cookie/protocol negotiation on its local connection.
@@ -83,37 +107,64 @@ export class WsBridge {
 
       phoneWs.on('message', (data: Buffer, isBinary: boolean) => {
         if (bridge.closed) return
-        this.checkFrameSize(data.length)
+        // `maxPayload` on the server only bounds the wire size of one message;
+        // the protocol cap is 64 KiB of payload, and everything above it is a
+        // peer the host should not have to defend against.
+        if (data.length > MAX_FRAME_BYTES) {
+          this.log(`ws-bridge: phone frame ${data.length}B exceeds ${MAX_FRAME_BYTES}B on #${id}; closing`)
+          this.failBridge(bridge, 1009, 'frame too large')
+          return
+        }
         const payload: string | Buffer = isBinary ? data : data.toString('utf8')
         if (!bridge.ready) {
           // Cap the pre-handshake queue so a stuck host cannot buffer forever.
-          if (bridge.pending.length < 256) bridge.pending.push({ opcode: isBinary ? 2 : 1, payload })
+          if (bridge.pending.length >= MAX_PENDING_FRAMES) {
+            this.failBridge(bridge, 1013, 'host handshake stalled')
+            return
+          }
+          bridge.pending.push({ opcode: isBinary ? 2 : 1, payload })
           return
         }
         this.sendToHost(bridge.host, { t: T.WS_FRAME, id, opcode: isBinary ? 2 : 1, dataBase64: toBase64(payload) })
       })
       phoneWs.on('close', (code: number, reason: Buffer) => {
+        // A close we initiated (timeout, cap, backpressure, purge) already told
+        // the host; only a phone-initiated close needs forwarding.
+        const notifyHost = bridge.ready && !bridge.closed
         bridge.closed = true
-        if (bridge.ready) {
+        this.clearOpenTimer(bridge)
+        if (notifyHost) {
           this.sendToHost(bridge.host, { t: T.WS_CLOSE, id, code, reason: reason.toString('utf8') })
         }
         this.bridges.delete(id)
       })
       phoneWs.on('error', (error: Error) => {
         this.log(`ws-bridge: phone ws error #${id}: ${error.message}`)
-        bridge.closed = true
-        this.bridges.delete(id)
-        phoneWs.close()
+        this.failBridge(bridge, 1011, 'phone socket error')
       })
     })
 
     return true
   }
 
-  private checkFrameSize(bytes: number): void {
-    if (bytes > MAX_FRAME_BYTES) {
-      this.log(`ws-bridge: oversized frame ${bytes}B (cap ${MAX_FRAME_BYTES}B) dropped`)
-    }
+  /**
+   * Tear a bridge down once, whichever side noticed first. The phone closes
+   * with the reason, the host is told, and every timer the bridge owns is
+   * released — a closed bridge must not resurface through its own timeout.
+   */
+  private failBridge(bridge: Bridge, code: number, reason: string): void {
+    if (bridge.closed) return
+    bridge.closed = true
+    this.clearOpenTimer(bridge)
+    this.bridges.delete(bridge.id)
+    this.sendToHost(bridge.host, { t: T.WS_CLOSE, id: bridge.id, code, reason })
+    try { bridge.phone.close(code, reason) } catch { /* socket already gone */ }
+  }
+
+  private clearOpenTimer(bridge: Bridge): void {
+    if (bridge.openTimer === undefined) return
+    clearTimeout(bridge.openTimer)
+    bridge.openTimer = undefined
   }
 
   /** Push a frame onto the host socket; silently drops when the host died. */
@@ -134,6 +185,7 @@ export class WsBridge {
       case T.WS_OPEN_OK: {
         if (bridge.ready) return
         bridge.ready = true
+        this.clearOpenTimer(bridge)
         for (const item of bridge.pending) {
           this.sendToHost(bridge.host, { t: T.WS_FRAME, id, opcode: item.opcode, dataBase64: toBase64(item.payload) })
         }
@@ -141,12 +193,22 @@ export class WsBridge {
         break
       }
       case T.WS_OPEN_ERR: {
+        // The host refused the upgrade it was asked to open: tear down without
+        // echoing a `ws-close` back at it.
         bridge.closed = true
+        this.clearOpenTimer(bridge)
         this.bridges.delete(id)
-        bridge.phone.close(1011, String(frame.reason ?? 'host refused'))
+        try { bridge.phone.close(1011, String(frame.reason ?? 'host refused')) } catch { /* gone */ }
         break
       }
       case T.WS_FRAME: {
+        // `send` buffers what the socket cannot drain; a phone on a weak link
+        // with a host streaming events must lose the bridge, not grow the heap.
+        if (bridge.phone.bufferedAmount > MAX_PHONE_BUFFER_BYTES) {
+          this.log(`ws-bridge: phone buffer ${bridge.phone.bufferedAmount}B over ${MAX_PHONE_BUFFER_BYTES}B on #${id}; closing`)
+          this.failBridge(bridge, 1013, 'phone too slow')
+          break
+        }
         const opcode = frame.opcode === 2 ? 2 : 1
         const data = Buffer.from(frame.dataBase64 as string, 'base64')
         if (opcode === 2) {
@@ -158,6 +220,7 @@ export class WsBridge {
       }
       case T.WS_CLOSE: {
         bridge.closed = true
+        this.clearOpenTimer(bridge)
         this.bridges.delete(id)
         bridge.phone.close(Number(frame.code) || 1000, String(frame.reason ?? ''))
         break
@@ -172,6 +235,7 @@ export class WsBridge {
     for (const [id, bridge] of [...this.bridges]) {
       if (bridge.deviceId !== deviceId) continue
       bridge.closed = true
+      this.clearOpenTimer(bridge)
       this.bridges.delete(id)
       bridge.phone.close(1012, 'device offline')
     }
@@ -180,6 +244,7 @@ export class WsBridge {
   closeAll(): void {
     for (const bridge of this.bridges.values()) {
       bridge.closed = true
+      this.clearOpenTimer(bridge)
       bridge.phone.close(1001, 'relay shutting down')
     }
     this.bridges.clear()

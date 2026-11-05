@@ -55,9 +55,38 @@ export const PAIR_CODE_TTL_MS = 10 * 60_000
 /** Challenge-response: one-shot challenge, 60s TTL. */
 export const CHALLENGE_TTL_MS = 60_000
 
-/** Rate limit on POST /pair: 5 attempts / minute / device + IP. */
+/** Rate limit on POST /pair: 5 attempts / minute / client address. */
 export const PAIR_RATE_WINDOW_MS = 60_000
 export const PAIR_RATE_MAX = 5
+
+/** Consecutive failures that lock one client address out of pairing, and for
+ * how long. The per-minute window alone leaves a slow guesser unbounded. */
+export const PAIR_FAIL_LOCKOUT_MAX = 20
+export const PAIR_FAIL_LOCKOUT_MS = 15 * 60_000
+
+/** Relay-wide ceiling on failed pairing attempts per window. Per-address limits
+ * cannot stop a distributed guess from burning the whole 6-digit space, and a
+ * single legitimate pairing must still get through. */
+export const PAIR_GLOBAL_FAIL_MAX = 60
+
+/** Cap on a body the relay itself parses (`/pair`, `/admin/*`). */
+export const MAX_CONTROL_BODY_BYTES = 4 * 1024
+
+/** WebSocket `maxPayload`. One logical frame is a 64 KiB payload base64-inflated
+ * (4/3) inside a JSON envelope, so the transport bound sits above it. */
+export const MAX_WIRE_FRAME_BYTES = Math.ceil((MAX_FRAME_BYTES * 4) / 3) + 2 * 1024
+
+/** A bridged socket must be confirmed by the host within this window; the phone
+ * may have queued data meanwhile, and an unanswered `ws-open` would pin the
+ * bridge (and its queue) for the process lifetime. */
+export const WS_OPEN_TIMEOUT_MS = 15_000
+
+/** Frames a bridge buffers before the host confirms `ws-open`. */
+export const MAX_PENDING_FRAMES = 256
+
+/** Phone send-buffer ceiling: a slow phone must not grow relay memory when the
+ * host streams events faster than the radio drains them. */
+export const MAX_PHONE_BUFFER_BYTES = 4 * 1024 * 1024
 
 /** A proxied request with no http-* progress for this long is torn down. */
 export const HTTP_IDLE_TIMEOUT_MS = 10_000

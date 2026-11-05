@@ -17,9 +17,14 @@ import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
-import { ChallengeStore, makePairCode, sha256Hex } from './auth.ts'
+import { AttemptLimiter, ChallengeStore, makePairCode, sha256Hex } from './auth.ts'
 import {
+  MAX_CONTROL_BODY_BYTES,
+  MAX_WIRE_FRAME_BYTES,
   PAIR_CODE_TTL_MS,
+  PAIR_FAIL_LOCKOUT_MAX,
+  PAIR_FAIL_LOCKOUT_MS,
+  PAIR_GLOBAL_FAIL_MAX,
   PAIR_RATE_MAX,
   PAIR_RATE_WINDOW_MS,
   PING_INTERVAL_MS,
@@ -40,6 +45,9 @@ import { JsonlStore } from './store.ts'
 import { WsBridge } from './ws-bridge.ts'
 
 const DEVICE_PREFIX = '/d/'
+
+/** Revoked-token / challenge sweeping cadence (memory only; the file keeps history). */
+const STORE_SWEEP_INTERVAL_MS = 10 * 60_000
 
 export interface RelayOptions {
   /** Shared token the desktop plugin must present in `hello` (single trust boundary, PROTOCOL §10). */
@@ -63,13 +71,28 @@ export class RelayServer {
   private readonly proxy: HttpProxy
   private readonly bridge: WsBridge
   private readonly hosts = new Map<WebSocket, HostCtx>()
-  private readonly phoneRate = new Map<string, number[]>()
+  /** Pairing / admin attempts keyed by the real client address (hashed). */
+  private readonly pairLimiter = new AttemptLimiter(
+    PAIR_RATE_MAX,
+    PAIR_RATE_WINDOW_MS,
+    PAIR_FAIL_LOCKOUT_MAX,
+    PAIR_FAIL_LOCKOUT_MS,
+  )
+  private readonly adminLimiter = new AttemptLimiter(
+    PAIR_RATE_MAX,
+    PAIR_RATE_WINDOW_MS,
+    PAIR_FAIL_LOCKOUT_MAX,
+    PAIR_FAIL_LOCKOUT_MS,
+  )
+  /** Failed pairing attempts across all clients; the backstop a per-address
+   * window cannot provide when a guess is spread over many addresses. */
+  private globalPairFailures: number[] = []
+  private lastStoreSweep = Date.now()
   /** Admin console cookie sessionId → expiry (ms). Memory-only, like phones. */
   private readonly admins = new Map<string, number>()
-  private readonly adminRate = new Map<string, number[]>()
 
   private readonly server = createServer((req, res) => void this.onRequest(req, res))
-  private readonly wss = new WebSocketServer({ noServer: true })
+  private readonly wss = new WebSocketServer({ noServer: true, maxPayload: MAX_WIRE_FRAME_BYTES })
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined
 
   constructor(private readonly options: RelayOptions, private readonly log: (message: string) => void) {
@@ -224,12 +247,18 @@ export class RelayServer {
   // -- pairing + claim (HTTP) ------------------------------------------------
 
   private onPair(req: IncomingMessage, res: ServerResponse): void {
-    const remote = req.socket.remoteAddress ?? 'unknown'
-    const key = `${sha256Hex(remote)}:${req.socket.remotePort}`
+    // The limiter keys on the real client address: the socket peer is the TLS
+    // terminator (one address for every phone) and its port changes per
+    // connection, so neither identifies a guesser (see `clientAddress`).
+    const key = sha256Hex(clientAddress(req))
+    if (!this.allowPairAttempt(key)) {
+      // Drain an unread body before answering, or keep-alive would parse the
+      // leftovers as the next request.
+      req.resume()
+      return this.json(res, 429, { ok: false, error: { code: 'RATE_LIMITED', message: '尝试过于频繁，请稍后再试' } })
+    }
 
-    let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
-    req.on('end', () => {
+    this.readControlBody(req, res, (body) => {
       let code: unknown
       try {
         code = (JSON.parse(body) as { code?: unknown }).code
@@ -239,14 +268,13 @@ export class RelayServer {
       if (typeof code !== 'string' || !/^\d{6}$/.test(code)) {
         return this.json(res, 400, { ok: false, error: { code: 'BAD_CODE', message: '配对码应为 6 位数字' } })
       }
-      if (!this.allowPairAttempt(key)) {
-        return this.json(res, 429, { ok: false, error: { code: 'RATE_LIMITED', message: '尝试过于频繁，请稍后再试' } })
-      }
 
       const device = this.store.findDeviceByCode(code)
       if (device === null) {
+        this.notePairFailure(key)
         return this.json(res, 404, { ok: false, error: { code: 'BAD_CODE', message: '配对码无效或已过期' } })
       }
+      this.pairLimiter.noteSuccess(key)
 
       const token = randomBytes(32).toString('hex')
       this.store.addToken(device.deviceId, token)
@@ -260,7 +288,21 @@ export class RelayServer {
         token,
       })
     })
-    req.on('error', () => this.plain(res, 400, 'bad request'))
+  }
+
+  /** Gate one pairing attempt: per-address window/lockout plus the relay-wide
+   * failed-attempt budget. Both fail closed with the same 429 so a guesser
+   * cannot tell which limit it hit. */
+  private allowPairAttempt(key: string): boolean {
+    const now = Date.now()
+    this.globalPairFailures = this.globalPairFailures.filter((stamp) => now - stamp < PAIR_RATE_WINDOW_MS)
+    if (this.globalPairFailures.length >= PAIR_GLOBAL_FAIL_MAX) return false
+    return this.pairLimiter.tryAttempt(key, now)
+  }
+
+  private notePairFailure(key: string): void {
+    this.pairLimiter.noteFailure(key)
+    this.globalPairFailures.push(Date.now())
   }
 
   // -- device proxy surface (HTTP + claim) -----------------------------------
@@ -567,9 +609,7 @@ export class RelayServer {
    * on the next hello (§9), making the removal a no-op that comes back.
    */
   private onAdminRemove(req: IncomingMessage, res: ServerResponse): void {
-    let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
-    req.on('end', () => {
+    this.readControlBody(req, res, (body) => {
       let deviceId: unknown
       try {
         deviceId = (JSON.parse(body) as { deviceId?: unknown }).deviceId
@@ -591,18 +631,15 @@ export class RelayServer {
       this.log(`admin remove: device ${deviceId.slice(0, 8)}… forgotten (tokens, pairings, sessions)`)
       this.json(res, 200, { ok: true })
     })
-    req.on('error', () => this.plain(res, 400, 'bad request'))
   }
 
   private onAdminLogin(req: IncomingMessage, res: ServerResponse): void {
-    const remote = req.socket.remoteAddress ?? 'unknown'
-    const key = this.adminRateKey(remote)
-    if (!this.allowAdminAttempt(key)) {
+    const key = `admin:${sha256Hex(clientAddress(req))}`
+    if (!this.adminLimiter.tryAttempt(key)) {
+      req.resume()
       return this.json(res, 429, { ok: false, error: { code: 'RATE_LIMITED', message: '尝试过于频繁，请稍后再试' } })
     }
-    let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
-    req.on('end', () => {
+    this.readControlBody(req, res, (body) => {
       let password: unknown
       try {
         password = (JSON.parse(body) as { password?: unknown }).password
@@ -610,8 +647,10 @@ export class RelayServer {
         return this.json(res, 400, { ok: false, error: { code: 'BAD_BODY', message: '请求格式错误' } })
       }
       if (typeof password !== 'string' || !constantTimeEquals(password, this.options.adminToken ?? '')) {
+        this.adminLimiter.noteFailure(key)
         return this.json(res, 401, { ok: false, error: { code: 'BAD_PASSWORD', message: '口令错误' } })
       }
+      this.adminLimiter.noteSuccess(key)
       const sessionId = randomBytes(16).toString('hex')
       const expiresAt = Date.now() + ADMIN_SESSION_TTL_MS
       this.admins.set(sessionId, expiresAt)
@@ -620,7 +659,6 @@ export class RelayServer {
       this.log('admin login ok')
       this.json(res, 200, { ok: true })
     })
-    req.on('error', () => this.plain(res, 400, 'bad request'))
   }
 
   private onAdminLogout(req: IncomingMessage, res: ServerResponse): void {
@@ -683,9 +721,7 @@ export class RelayServer {
   }
 
   private onAdminRevoke(req: IncomingMessage, res: ServerResponse, disconnectOnly: boolean): void {
-    let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
-    req.on('end', () => {
+    this.readControlBody(req, res, (body) => {
       let deviceId: unknown
       try {
         deviceId = (JSON.parse(body) as { deviceId?: unknown }).deviceId
@@ -714,26 +750,48 @@ export class RelayServer {
       }
       this.json(res, 200, { ok: true })
     })
-    req.on('error', () => this.plain(res, 400, 'bad request'))
-  }
-
-  private adminRateKey(remote: string): string {
-    return `admin:${sha256Hex(remote)}`
-  }
-
-  private allowAdminAttempt(key: string): boolean {
-    const now = Date.now()
-    const recent = (this.adminRate.get(key) ?? []).filter((stamp) => now - stamp < PAIR_RATE_WINDOW_MS)
-    if (recent.length >= PAIR_RATE_MAX) {
-      this.adminRate.set(key, recent)
-      return false
-    }
-    recent.push(now)
-    this.adminRate.set(key, recent)
-    return true
   }
 
   // -- helpers ---------------------------------------------------------------
+
+  /**
+   * Read one control-plane JSON body, capped at {@link MAX_CONTROL_BODY_BYTES}.
+   * `/pair` and the admin endpoints are reachable without credentials, so an
+   * unbounded `body += chunk` would let one connection buffer the process to
+   * death; overruns get 413 and the rest of the stream is drained, not kept.
+   */
+  private readControlBody(
+    req: IncomingMessage,
+    res: ServerResponse,
+    onBody: (body: string) => void,
+  ): void {
+    let body = ''
+    let bytes = 0
+    let done = false
+    req.on('data', (chunk: Buffer) => {
+      if (done) return
+      bytes += chunk.length
+      if (bytes > MAX_CONTROL_BODY_BYTES) {
+        done = true
+        body = ''
+        res.writeHead(413, { 'Content-Type': 'text/plain; charset=utf-8' })
+        res.end('payload too large')
+        req.resume()
+        return
+      }
+      body += chunk.toString('utf8')
+    })
+    req.on('end', () => {
+      if (done) return
+      done = true
+      onBody(body)
+    })
+    req.on('error', () => {
+      if (done) return
+      done = true
+      this.plain(res, 400, 'bad request')
+    })
+  }
 
   /** Identity from the session cookie, if it names a live phone session. */
   private deviceFromCookie(req: IncomingMessage): string | null {
@@ -781,18 +839,6 @@ export class RelayServer {
     ])
   }
 
-  private allowPairAttempt(key: string): boolean {
-    const now = Date.now()
-    const recent = (this.phoneRate.get(key) ?? []).filter((stamp) => now - stamp < PAIR_RATE_WINDOW_MS)
-    if (recent.length >= PAIR_RATE_MAX) {
-      this.phoneRate.set(key, recent)
-      return false
-    }
-    recent.push(now)
-    this.phoneRate.set(key, recent)
-    return true
-  }
-
   private heartbeat(): void {
     const now = Date.now()
     for (const [ws, ctx] of [...this.hosts]) {
@@ -815,6 +861,17 @@ export class RelayServer {
     // Sliding window eviction for phone cookie sessions.
     for (const sessionId of this.sessions.evictExpiredPhones(now, SESSION_TTL_MS)) {
       this.log(`phone session expired: ${sessionId.slice(0, 8)}…`)
+    }
+    // Sweep the tables that only ever grow: unconsumed challenges, attempt
+    // limiters and revoked token rows. The heartbeat is the relay's only
+    // periodic hook, so memory reclaimed here is reclaimed everywhere.
+    this.challenges.sweep(now)
+    this.pairLimiter.sweep(now)
+    this.adminLimiter.sweep(now)
+    if (now - this.lastStoreSweep >= STORE_SWEEP_INTERVAL_MS) {
+      this.lastStoreSweep = now
+      const dropped = this.store.sweepRevoked(now)
+      if (dropped > 0) this.log(`store: dropped ${dropped} expired revoked token row(s)`)
     }
   }
 
@@ -865,6 +922,36 @@ function readCookie(header: string | undefined, name: string): string | null {
     if (key === name && rest.length > 0) return rest.join('=').trim()
   }
   return null
+}
+
+/** IPv4-mapped IPv6 (`::ffff:1.2.3.4`) is the same client as its IPv4 form. */
+function normalizeAddress(raw: string): string {
+  const trimmed = raw.trim()
+  return trimmed.startsWith('::ffff:') ? trimmed.slice('::ffff:'.length) : trimmed
+}
+
+/**
+ * Client address used for rate limiting.
+ *
+ * The shipped deployment terminates TLS in caddy on loopback, so every phone
+ * reaches the relay from the same peer address and with a fresh source port —
+ * neither the socket address nor the port identifies a client. In that case
+ * the trusted terminator's `X-Forwarded-For` is the only usable identity: only
+ * the single loopback hop is trusted, and the *last* entry is the one it
+ * appended (earlier entries are client-supplied and forgeable). A relay
+ * reached directly never reads the header.
+ */
+function clientAddress(req: IncomingMessage): string {
+  const peer = normalizeAddress(req.socket.remoteAddress ?? 'unknown')
+  if (!peer.startsWith('127.') && peer !== '::1') return peer
+  const header = req.headers['x-forwarded-for']
+  const raw = Array.isArray(header) ? header.join(',') : header
+  if (raw === undefined) return peer
+  const hops = raw
+    .split(',')
+    .map((part) => normalizeAddress(part))
+    .filter((part) => part !== '')
+  return hops.length === 0 ? peer : hops[hops.length - 1]
 }
 
 function constantTimeEquals(a: string, b: string): boolean {

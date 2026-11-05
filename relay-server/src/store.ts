@@ -268,6 +268,22 @@ export class JsonlStore {
       this.append({ ...row, type: 'token', revokedAt: Date.now() })
     }
   }
+
+  /**
+   * Drop revoked tokens past the retention window from memory (the file keeps
+   * the audit trail). `load` used to be the only place doing this, so a relay
+   * that stays up accumulated one revoked row per re-pairing forever.
+   */
+  sweepRevoked(now = Date.now()): number {
+    let dropped = 0
+    for (const [sha, row] of [...this.tokensBySha]) {
+      if (row.revokedAt === null) continue
+      if (now - row.revokedAt <= REVOKED_TOKEN_RETENTION_MS) continue
+      this.tokensBySha.delete(sha)
+      dropped += 1
+    }
+    return dropped
+  }
 }
 
 /** Recreate a store under a fresh path (used by tests, never by the server). */
