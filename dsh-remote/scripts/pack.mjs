@@ -23,6 +23,7 @@ const shipped = {
   files: pkg.files,
   exports: pkg.exports,
   license: pkg.license,
+  peerDependencies: pkg.peerDependencies ?? {},
   dependencies: pkg.dependencies ?? {},
   dsh: pkg.dsh,
 }

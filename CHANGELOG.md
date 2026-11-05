@@ -6,6 +6,39 @@ each package versioned independently (semver).
 
 ## relay-server
 
+### 0.1.4 - 2026-11-05
+
+#### Fixed
+
+- Pairing attempts were rate-limited per TCP connection, not per client: the
+  limiter key carried `remotePort`, so every fresh connection reset the bucket
+  (and behind the shipped caddy deployment every phone also shares the loopback
+  peer address). A 6-digit code could therefore be guessed for its whole
+  10-minute TTL. Limits now key on the real client address (`X-Forwarded-For`,
+  honoured only on a loopback peer and only for its last hop), lock the address
+  for 15 minutes after 20 consecutive failures, and keep a relay-wide
+  failed-attempt budget as a distributed-guess backstop.
+- `/pair` and the admin endpoints buffered an unbounded request body
+  (`body += chunk`), so one connection could exhaust the relay's memory.
+  Control-plane bodies are capped at 4 KiB and answered with 413.
+- The 64 KiB frame cap was not enforced on the phone→host direction: the check
+  only logged and the WebSocket server had no `maxPayload` (ws defaults to
+  100 MB). An oversized phone frame now closes the bridge with 1009.
+- Bridged sockets could be pinned or grow unbounded: an unanswered `ws-open`
+  had no deadline, the pre-handshake queue silently dropped frames past 256
+  (breaking frame order), and a slow phone let the relay's send buffer grow
+  with no ceiling. The handshake now times out after 15s, queue overflow fails
+  the link instead of dropping frames, and a phone send buffer past 4 MiB
+  closes the bridge.
+
+#### Changed
+
+- Unconsumed challenges, attempt-limiter rows and revoked token rows are swept
+  from memory by the heartbeat (`load` used to be the only sweep). A relay that
+  stayed up accumulated a challenge per pairing attempt and grew its revoked
+  token table until the next restart; both are now bounded in time, and
+  challenge rows no longer outlive their TTL at all.
+
 ### 0.1.3 - 2026-09-01
 
 #### Fixed
@@ -49,6 +82,31 @@ each package versioned independently (semver).
   sessions, admin console, JSONL store (sha256-only on disk).
 
 ## dsh-remote
+
+### 0.2.2 - 2026-11-05
+
+#### Changed
+
+- The mobile shim now defers to dsh's own responsive layout. Since 0.2.2 the
+  client turns the sidebar into a real drawer below 768px
+  (`data-sidebar-drawer` + a backdrop), gives the settings panel a full-screen
+  mobile layout with a scrollable horizontal nav, and clamps portaled menus to
+  the visual viewport — so the previous mobile stylesheet fought it. The
+  blanket `--dsh-chat-content-width` override and the viewport meta hints stay;
+  every rule aimed at the old desktop markup is gone.
+
+#### Fixed
+
+- Expanded sidebar on a phone showed a dimmed band and clipped rows: the
+  `> :first-child` float landed on the new drawer backdrop instead of the
+  sidebar column (315px instead of the full width), and the
+  `[role=dialog][aria-modal]` rules also matched the sidebar root — which is
+  itself `role=dialog > nav` while its drawer is open — widening it to 100vw
+  (clipped at the 280px column) and turning its panel list into a clipped row.
+- The settings sheet lost its navigation and its scroll: the
+  `> nav > div:first-child { display: none }` rule hid the nav list, the only
+  child of the new nav, and the width/height overrides replaced the shipped
+  mobile grid so the content pane stopped scrolling.
 
 ### 0.2.1 - 2026-09-12
 
