@@ -6,6 +6,18 @@ each package versioned independently (semver).
 
 ## relay-server
 
+### 0.1.7 - 2026-11-05
+
+#### Fixed
+
+- A silent `text/event-stream` response was torn down by the 10s no-progress
+  watchdog, so the browser reported `ERR_HTTP2_PROTOCOL_ERROR` (seen on
+  `/plugins/events`) and any SSE consumer lost the stream. Idle event streams
+  now receive a `: keepalive` comment on the same cadence instead: the
+  EventSource parser ignores it, the response stays open, and it also keeps an
+  intermediary's response-idle timer satisfied. Non-SSE responses keep the
+  10s watchdog.
+
 ### 0.1.6 - 2026-11-05
 
 #### Fixed

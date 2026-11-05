@@ -8,7 +8,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933?logo=node.js&logoColor=white&style=flat-square)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-11.7-F69220?logo=pnpm&logoColor=white&style=flat-square)](https://pnpm.io/)
 [![Protocol](https://img.shields.io/badge/tunnel_protocol-v1-4c6ef5?style=flat-square)](../docs/PROTOCOL.md)
-[![Version](https://img.shields.io/badge/version-0.1.6-4c6ef5?style=flat-square)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.1.7-4c6ef5?style=flat-square)](./package.json)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square)](../README.md)
 
 简体中文 | [English](README.en.md)
@@ -35,7 +35,8 @@
   20 次失败锁定 15 分钟、全局限流兜底）换一次性挑战
   （60s），WebSocket 完成挑战-响应；支持持令牌静默重连。
 - **HTTP 反向代理**：请求/响应按 ≤64KiB 帧搬运，帧序即流序（SSE / blob 不受影响）；
-  host 离线立即 409；10s 无进度防悬挂。
+  host 离线立即 409；10s 无进度防悬挂，但 `text/event-stream` 不适用——静默的事件流
+  会收到 `: keepalive` 注释行而不是被断开（浏览器里表现为 ERR_HTTP2_PROTOCOL_ERROR）。
 - **WebSocket 透传**：事件流 upgrade（当前为 `/api/remote.mux`）透传为
   `ws-open/ws-frame/ws-close` 帧；`ws-frame` 承载 dsh 的整条消息（不分片，单帧
   上限 16 MiB），host 启动握手 15s 无应答会断开。

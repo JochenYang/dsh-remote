@@ -68,6 +68,9 @@ interface PendingHttp {
   htmlPending: boolean
   /** Set once the polyfill has been injected into the stream. */
   injected: boolean
+  /** Upstream answered `text/event-stream`: silence is legitimate, so the idle
+   * timer emits a comment line instead of failing the request. */
+  sse: boolean
 }
 
 function splitPathQuery(raw: string): { path: string; query: string } {
@@ -104,6 +107,23 @@ export class HttpProxy {
     if (pending.timer !== undefined) clearTimeout(pending.timer)
     pending.timer = setTimeout(() => {
       pending.timer = undefined
+      if (pending.sse && pending.headSent) {
+        // An event stream is silent by nature — a quiet session may go minutes
+        // without a frame. Failing it here aborted the response mid-stream and
+        // read to the browser (and any CDN in front) as a protocol error, so
+        // keep the path warm with an SSE comment line instead; EventSource and
+        // the stream parsers ignore it, and it also beats an intermediary's
+        // response-idle timeout.
+        try {
+          pending.res.write(': keepalive\n\n')
+        } catch {
+          this.pending.delete(id)
+          pending.res.destroy()
+          return
+        }
+        this.armIdleKill(pending, id)
+        return
+      }
       this.pending.delete(id)
       pending.res.destroy()
     }, HTTP_IDLE_TIMEOUT_MS)
@@ -127,7 +147,7 @@ export class HttpProxy {
     restPath: string,
   ): void {
     const id = this.nextId++
-    const pending: PendingHttp = { host, res, headSent: false, timer: undefined, htmlPending: false, injected: false }
+    const pending: PendingHttp = { host, res, headSent: false, timer: undefined, htmlPending: false, injected: false, sse: false }
     this.pending.set(id, pending)
     this.armIdleKill(pending, id)
 
@@ -227,6 +247,7 @@ export class HttpProxy {
           pending.headSent = true
         }
         pending.htmlPending = String(headHeaders['content-type'] ?? '').toLowerCase().includes('text/html')
+        pending.sse = String(headHeaders['content-type'] ?? '').toLowerCase().includes('text/event-stream')
         this.armIdleKill(pending, id)
         break
       }

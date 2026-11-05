@@ -132,6 +132,35 @@ function openBridge(cookie) {
   })
 }
 
+/** Streamed GET through the tunnel; resolves on response headers, exposes what
+ * has been received so far. */
+function openStream(pathname, cookie) {
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      host: '127.0.0.1', port: PORT, path: pathname, method: 'GET', agent: false,
+      headers: { cookie },
+    }, (res) => {
+      let text = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk) => { text += chunk })
+      resolve({ request, response: res, read: () => text })
+    })
+    request.on('error', reject)
+    request.end()
+  })
+}
+
+function waitForValue(predicate, tries = 60) {
+  return (async () => {
+    for (let i = 0; i < tries; i++) {
+      const value = predicate()
+      if (value !== undefined) return value
+      await sleep(50)
+    }
+    return undefined
+  })()
+}
+
 async function main() {
   relayProc = relay()
   await waitHttp()
@@ -209,6 +238,30 @@ async function main() {
   ))
   check('70 KiB phone frame reaches the host', bigDelivered)
   bigBridge.close()
+
+  // An event stream is silent by nature, and the response must stay open
+  // through that silence: destroying it after the idle window is what the
+  // browser reported as ERR_HTTP2_PROTOCOL_ERROR on /plugins/events.
+  const ssePending = openStream(`/d/${DEVICE_ID}/plugins/events`, phoneCookie)
+  const sseOpen = await waitForValue(() => hostInbox.find(
+    (frame) => frame.t === 'http-req' && String(frame.path) === '/plugins/events',
+  ))
+  if (sseOpen === undefined) {
+    check('silent SSE gets a keepalive comment', false, 'no http-req reached the host')
+  } else {
+    host.ws.send(JSON.stringify({
+      t: 'http-head',
+      id: sseOpen.id,
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    }))
+    const sse = await ssePending.catch(() => undefined)
+    await sleep(11_500)
+    check('silent SSE gets a keepalive comment instead of a teardown',
+      sse !== undefined && sse.read().includes(': keepalive') && !sse.response.destroyed,
+      sse === undefined ? 'response was torn down' : `destroyed=${sse.response.destroyed} got=${JSON.stringify(sse.read().slice(0, 40))}`)
+    sse?.request.destroy()
+  }
 
   const removeOnline = await post('/admin/api/remove', { deviceId: DEVICE_ID }, { cookie: adminCookie })
   check('remove online refused 409', removeOnline.status === 409 && removeOnline.json?.error?.code === 'HOST_ONLINE')
