@@ -54,20 +54,23 @@ Phone browser ──HTTPS──> relay-server ──WS frames──> dsh-remote 
 
 ## Mobile Adaptation (highlight)
 
-The stock dsh web UI is desktop-only; this repo fills in a complete mobile
-experience **inside the tunnel**:
+Since dsh 0.2.2 the **kernel** ships its own mobile layout: below 768px the
+sidebar becomes a drawer with a click-to-close backdrop, the settings panel
+goes full-screen with a horizontally scrollable nav, and dropdown menus clamp
+to the visual viewport. The suite plugins (`@dsh-app/plugin-*`: market, todo,
+code graph, …) still carry no breakpoints. This repo fills only the gaps
+**inside the tunnel**:
 
-- full-width chat text and composer (layout custom properties re-declared,
-  non-invasively);
-- full-screen settings sheet with a horizontal nav strip; viewport-clamped
-  model dropdown;
-- sidebar as an overlay drawer (no more squeezing the chat);
+- full-width chat text and composer (`resolveContentWidth` floors the column
+  at 640/680px, so a phone would overflow horizontally; the plugin re-declares
+  layout custom properties, non-invasively);
 - the keyboard no longer covers the composer
   (`interactive-widget=resizes-content`).
 
 The stylesheet is injected into tunnel traffic only — desktop / GUI rendering
-is untouched. Every anchor avoids build-time class hashes; if a dsh upgrade
-changes the structure the shim degrades back to the stock desktop layout.
+is untouched. It anchors on layout custom properties and the viewport meta
+only, never on upstream class names or structure, so a future dsh redesign
+cannot break the phone layout from here.
 
 ## Security Model
 

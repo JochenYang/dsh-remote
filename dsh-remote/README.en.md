@@ -41,10 +41,12 @@ Phone browser ──HTTPS──> relay-server ──WS frames──> dsh-remote 
   ui-settings client bundle in transit, restoring the model catalog, plugin
   config sections and every other settings surface (describe answers are
   redacted upstream; secret material never rides the wire).
-- **Mobile adaptation layer**: a responsive stylesheet injected into tunnel
-  HTML (`≤720px` full-width chat / full-screen settings sheet / clamped
-  dropdowns; `≤1024px` overlay sidebar drawer). Desktop and GUI traffic never
-  crosses the plugin, so it stays pixel-identical.
+- **Mobile adaptation layer**: injects viewport hints and chat-width custom
+  properties into tunnel HTML (full-width chat and composer at ≤768px). The
+  sidebar drawer, full-screen settings panel with its horizontal nav, and
+  viewport-clamped dropdowns have shipped in dsh since 0.2.2 and are no longer
+  overridden. Desktop and GUI traffic never crosses the plugin, so it stays
+  pixel-identical.
 - **Pairing UX**: 6-digit pairing code + QR code; code refresh waits for the
   relay's reply before answering; copy feedback; expired codes flagged in red.
 - **Session control**: one click revokes every paired phone session.
