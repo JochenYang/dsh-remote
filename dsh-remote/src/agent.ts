@@ -10,7 +10,7 @@
  * third-party WS dependency is needed on the host side.
  */
 
-import { PING_INTERVAL_MS, PING_TIMEOUT_MS, PROTOCOL_VERSION, RECONNECT_BASE_MS, RECONNECT_MAX_MS, T } from './frames.js'
+import { PING_INTERVAL_MS, PING_TIMEOUT_MS, PROTOCOL_VERSION, RECONNECT_BASE_MS, RECONNECT_MAX_MS, STABLE_CONNECTION_MS, T } from './frames.js'
 
 export type Frame = Record<string, unknown>
 
@@ -66,6 +66,8 @@ export class RelayAgent {
   private stopped = true
   private retryAttempt = 0
   private lastRx = 0
+  /** When the current socket opened; 0 while closed. Drives the backoff reset. */
+  private openedAt = 0
   private frameSink: ((frame: Frame) => void) | undefined
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined
   private tickTimer: ReturnType<typeof setInterval> | undefined
@@ -207,7 +209,7 @@ export class RelayAgent {
   private onOpen(): void {
     this.log('relay connected')
     this.connectedAt = Date.now()
-    this.retryAttempt = 0
+    this.openedAt = Date.now()
     this.retryInMs = null
     this.sendFrame({
       t: T.HELLO,
@@ -218,7 +220,7 @@ export class RelayAgent {
     })
     this.setState('connecting')
     if (this.tickTimer === undefined) {
-      this.tickTimer = setInterval(() => this.tick(), 10_000)
+      this.tickTimer = setInterval(() => this.tick(), PING_INTERVAL_MS)
     }
   }
 
@@ -243,6 +245,14 @@ export class RelayAgent {
     this.ws = null
     this.settlePair(null)
     if (this.stopped) return
+    // Backoff must reflect how the link died, not that the TCP handshake
+    // succeeded: resetting on `open` made a flapping connection reconnect
+    // every second forever (and hammer the relay/CDN). Only a socket that
+    // stayed up counts as healthy.
+    if (this.openedAt !== 0 && Date.now() - this.openedAt >= STABLE_CONNECTION_MS) {
+      this.retryAttempt = 0
+    }
+    this.openedAt = 0
     this.setState('error')
     this.scheduleReconnect()
   }

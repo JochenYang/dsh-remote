@@ -45,9 +45,11 @@ export const PROTOCOL_VERSION = 1
 /** Frame cap; anything larger must be chunked into `http-body` frames. */
 export const MAX_FRAME_BYTES = 64 * 1024
 
-/** Heartbeat cadence: relay pings every 30s, 90s of silence kills. */
-export const PING_INTERVAL_MS = 30_000
-export const PING_TIMEOUT_MS = 90_000
+/** Heartbeat cadence: relay pings every 15s, 45s of silence kills. The shipped
+ * deployment terminates at a CDN whose WebSocket idle timeout is 30s (measured),
+ * so the relay's own keepalive has to sit well under it — 30s was a race. */
+export const PING_INTERVAL_MS = 15_000
+export const PING_TIMEOUT_MS = 45_000
 
 /** Pairing code lifetime (10 minutes). */
 export const PAIR_CODE_TTL_MS = 10 * 60_000

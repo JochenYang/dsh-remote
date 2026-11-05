@@ -44,9 +44,16 @@ export const PROTOCOL_VERSION = 1
 /** Frame cap; the relay chunks anything larger into `http-body` frames. */
 export const MAX_FRAME_BYTES = 64 * 1024
 
-/** Heartbeat cadence (relay pings we answer) and death timer we enforce. */
-export const PING_INTERVAL_MS = 30_000
-export const PING_TIMEOUT_MS = 90_000
+/** Heartbeat cadence we send (relay answers `pong`) and the death timer we
+ * enforce. The public deployment sits behind a CDN whose WebSocket idle
+ * timeout is 30s, so the host must generate traffic well inside it. */
+export const PING_INTERVAL_MS = 10_000
+export const PING_TIMEOUT_MS = 45_000
+
+/** A connection that stayed up this long counts as healthy and resets the
+ * reconnect backoff; shorter lives keep escalating instead of hammering the
+ * relay every second. */
+export const STABLE_CONNECTION_MS = 30_000
 
 /** Reconnect backoff bounds (exponential, 1s → 2s → 4s … capped). */
 export const RECONNECT_BASE_MS = 1_000

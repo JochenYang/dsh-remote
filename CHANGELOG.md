@@ -6,6 +6,26 @@ each package versioned independently (semver).
 
 ## relay-server
 
+### 0.1.6 - 2026-11-05
+
+#### Fixed
+
+- Keepalive cadence sat exactly on the deployment's WebSocket idle timeout.
+  The shipped relay runs behind a CDN that kills an idle WebSocket after 30s
+  (measured: an idle connection through it closed at 30.0s with 1006), and the
+  relay only pinged every 30s — a race that dropped phone sockets and made the
+  web client reconnect. The relay now pings every 15s and declares a silent
+  host dead after 45s (was 90s), and it answers a host-initiated `ping` with
+  `pong` so the origin→client direction also carries traffic.
+- A replaced host socket stayed silent in the log, so a reconnect storm looked
+  like "host online" with no matching "host offline". Host closes now log the
+  close code, the socket's age and the reason, both for a displaced socket
+  (`host displaced: … code=… after Ns`) and a real loss (`host offline: …`),
+  and a hello that replaces a live host logs how long the previous one lived.
+  The close code identifies the culprit: 1006 = path died without a close
+  frame (CDN/NAT), 1009 = oversized frame, 1012 = displaced, 4001 = heartbeat
+  timeout, 1000 = the plugin closed on purpose.
+
 ### 0.1.5 - 2026-11-05
 
 #### Fixed
@@ -98,6 +118,19 @@ each package versioned independently (semver).
   sessions, admin console, JSONL store (sha256-only on disk).
 
 ## dsh-remote
+
+### 0.2.3 - 2026-11-05
+
+#### Fixed
+
+- Reconnect backoff reset on `open`, so a link that died right after the
+  handshake reconnected every second forever — a storm that hammered the relay
+  and the CDN (and produced the 409/502 bursts). The backoff now resets only
+  after a connection has stayed up for 30s; shorter lives escalate
+  1s→2s→…→60s.
+- Keepalive now runs on the same budget as the relay (ping every 10s, silence
+  death at 45s instead of 90s), and the relay answers those pings since 0.1.6,
+  so a dead path is noticed in seconds rather than a minute and a half.
 
 ### 0.2.2 - 2026-11-05
 

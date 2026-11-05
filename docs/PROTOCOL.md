@@ -114,7 +114,9 @@ host 在本地使用 Node 原生 `WebSocket`（globalThis，Node 22+）连接
 
 ## 7. 心跳与断线
 
-- 每 30 秒 `{ "t":"ping" }`，对端回 `{ "t":"pong" }`；90 秒无响应判死关闭。
+- 每 15 秒 relay 发 `{ "t":"ping" }`，对端回 `{ "t":"pong" }`；45 秒无响应判死关闭。
+  host 侧每 10 秒主动 `ping`（relay 回 `pong`），两侧都保持在 CDN 的 WebSocket
+  空闲超时（实测 30 秒）以内。
 - host 断线：指数退避重连（1s→2s→4s…上限 60s），重连后重发 `hello`。
 - relay 向手机的 HTTP 请求在 host 离线时立即失败（见 §5），前端自带 `connection stream loop` 重连逻辑，无需额外处理。
 

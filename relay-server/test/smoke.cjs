@@ -154,6 +154,19 @@ async function main() {
   check('host survives a 150 KiB frame', host.ws.readyState === WebSocket.OPEN,
     `readyState=${host.ws.readyState}`)
 
+  const gotPong = await new Promise((resolve) => {
+    const onMessage = (raw) => {
+      const frame = JSON.parse(raw.toString())
+      if (frame.t !== 'pong') return
+      host.ws.off('message', onMessage)
+      resolve(true)
+    }
+    host.ws.on('message', onMessage)
+    host.ws.send(JSON.stringify({ t: 'ping' }))
+    setTimeout(() => resolve(false), 2000)
+  })
+  check('host-initiated ping is answered with pong', gotPong)
+
   const pair1 = await post('/pair', { code: host.code })
   check('first pair ok', pair1.json?.ok === true)
   const pair2 = await post('/pair', { code: host.code })

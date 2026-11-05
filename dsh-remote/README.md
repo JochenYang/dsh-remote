@@ -90,7 +90,9 @@ dsh plugin --profile web add ./dsh-remote-<ver>.tgz
   → 本地 dsh web server，响应按帧流式回传（帧序即流序）。
 - **下行**：dsh 前端的事件流（当前版本为 `/api/remote.mux` WebSocket），
   relay 透传 `ws-open/ws-frame/ws-close` 帧，本插件在本地建立等价 WS 双向搬运。
-- **保活**：30s ping/pong，90s 静默判死；断线指数退避重连（1s→60s）。
+- **保活**：host 每 10s `ping`（relay 回 `pong`），relay 每 15s `ping`；45s 静默判死。
+  断线指数退避重连（1s→60s），只有稳定存活 ≥30s 的连接才重置退避——否则链路抖动时
+  会每秒重连一次，把中继和 CDN 一起打死。
 
 协议帧格式、握手流程与安全参数见 [docs/PROTOCOL.md](../docs/PROTOCOL.md)
 （独立发布时请随仓库携带该文件）。

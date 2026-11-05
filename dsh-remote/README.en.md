@@ -101,8 +101,11 @@ scanning, or by entering the code at `<relay>/pair` on the phone.
 - **Downstream**: the dsh event stream (currently the `/api/remote.mux`
   WebSocket) is forwarded by the relay as `ws-open/ws-frame/ws-close` frames and
   mirrored onto an equivalent local WebSocket.
-- **Keepalive**: 30s ping/pong, 90s silence kill; reconnects back off
-  exponentially (1s→60s).
+- **Keepalive**: the host pings every 10s (relay answers `pong`), the relay
+  pings every 15s, silence for 45s kills the link; reconnects back off
+  exponentially (1s→60s) and the backoff only resets after a connection has
+  stayed up for 30s — resetting on `open` made a flapping link reconnect every
+  second and hammer the relay and the CDN.
 
 Wire formats, handshake flow and security parameters: [docs/PROTOCOL.md](../docs/PROTOCOL.md)
 (carry the file along when publishing standalone).

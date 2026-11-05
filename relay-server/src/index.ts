@@ -351,8 +351,14 @@ export class RelayServer {
   ): void {
     this.wss.handleUpgrade(req, socket, head, (ws) => {
       ws.on('message', (data: Buffer) => this.onHostMessage(ws, data.toString('utf8')))
-      ws.on('close', () => this.onHostClosed(ws))
-      ws.on('error', () => this.onHostClosed(ws))
+      // The close code is the diagnosis: 1006 = path died (CDN/NAT) with no
+      // close frame, 1009 = frame too large, 1012 = we displaced it, 4001 =
+      // heartbeat timeout, 1000 = the plugin closed on purpose.
+      ws.on('close', (code: number, reason: Buffer) => this.onHostClosed(ws, code, reason.toString('utf8')))
+      ws.on('error', (error: Error) => {
+        this.log(`host socket error: ${(error as Error).message}`)
+        this.onHostClosed(ws, 1006, 'socket error')
+      })
     })
   }
 
@@ -380,6 +386,12 @@ export class RelayServer {
     this.log(`relay host-frame: ${String(frame.t)}${frame.id !== undefined ? ` #${String(frame.id)}` : ''}`)
     switch (frame.t) {
       case T.PONG:
+        break
+      case T.PING:
+        // Host-initiated keepalive (the plugin pings every 10s so the path
+        // stays warmer than the CDN's idle timeout). Answering keeps the
+        // origin→client direction active too.
+        this.sendRaw(ws, { t: T.PONG })
         break
       case T.PAIR_REFRESH:
         this.refreshPairCode(ws, ctx)
@@ -432,6 +444,7 @@ export class RelayServer {
     // First contact auto-registers the device (PROTOCOL §9).
     const hostName = typeof frame.hostName === 'string' ? frame.hostName : 'DSH Desktop'
     const device = this.store.upsertDevice(deviceId, hostName)
+    const previous = this.sessions.getHost(deviceId)
 
     const session: HostSession = {
       deviceId,
@@ -443,6 +456,12 @@ export class RelayServer {
     }
     this.sessions.registerHost(deviceId, ws, device.hostName)
     this.hosts.set(ws, { session, alive: true, rate: [] })
+    if (previous !== null && previous.ws !== ws) {
+      // A replacement is a reconnect, not a fresh start: the age of the socket
+      // it displaced is the only signal about how the previous link died.
+      const lived = Math.round((Date.now() - previous.connectedAt) / 1000)
+      this.log(`host replaced: ${deviceId.slice(0, 8)}… previous connection lived ${lived}s`)
+    }
 
     // Always serve a fresh pairing code for the settings page (§3).
     this.refreshPairCode(ws, this.hosts.get(ws)!)
@@ -484,20 +503,27 @@ export class RelayServer {
     this.log(`revoke: all phone tokens dropped for ${deviceId.slice(0, 8)}…`)
   }
 
-  private onHostClosed(ws: WebSocket): void {
+  private onHostClosed(ws: WebSocket, code = 1006, reason = ''): void {
     const ctx = this.hosts.get(ws)
     if (ctx === undefined) return
     this.hosts.delete(ws)
+    const lived = Math.round((Date.now() - ctx.session.connectedAt) / 1000)
+    const detail = `code=${code} after ${lived}s${reason === '' ? '' : ` (${reason})`}`
     // A displaced socket (its replacement already registered and closed it)
     // must not unregister the device the *newer* host now holds — otherwise a
     // reconnect race leaves the relay with a live host socket (ping/pong
-    // healthy) that the phone routes never reach (409 forever).
+    // healthy) that the phone routes never reach (409 forever). It is still
+    // logged: without this line a reconnect storm looks like "host online,
+    // never offline".
     const current = this.sessions.getHost(ctx.session.deviceId)
-    if (current !== null && current.ws !== ws) return
+    if (current !== null && current.ws !== ws) {
+      this.log(`host displaced: ${ctx.session.deviceId.slice(0, 8)}… ${detail}`)
+      return
+    }
     this.sessions.unregisterHost(ctx.session.deviceId)
     this.proxy.purgeHost(ctx.session)
     this.bridge.purgeDevice(ctx.session.deviceId)
-    this.log(`host offline: ${ctx.session.deviceId.slice(0, 8)}…`)
+    this.log(`host offline: ${ctx.session.deviceId.slice(0, 8)}… ${detail}`)
   }
 
   // -- phone handshake (WebSocket) -------------------------------------------
@@ -845,7 +871,8 @@ export class RelayServer {
     const now = Date.now()
     for (const [ws, ctx] of [...this.hosts]) {
       if (now - ctx.session.lastSeen > PING_TIMEOUT_MS) {
-        this.log(`host timeout: ${ctx.session.deviceId.slice(0, 8)}…`)
+        const lived = Math.round((now - ctx.session.connectedAt) / 1000)
+        this.log(`host timeout: ${ctx.session.deviceId.slice(0, 8)}… silent ${Math.round((now - ctx.session.lastSeen) / 1000)}s of ${lived}s`)
         this.hosts.delete(ws)
         // Same guard as onHostClosed: a stale displaced socket must not evict
         // the device's registered (newer) host.
