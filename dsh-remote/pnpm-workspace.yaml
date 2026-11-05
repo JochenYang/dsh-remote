@@ -1,2 +1,6 @@
 allowBuilds:
   esbuild: true
+# The plugin declares @deepseek-ai/dsh as a peer so consumers see the host
+# requirement, but installing it here would drag the whole dsh tree (and its
+# build-script approvals) into this package's lockfile.
+autoInstallPeers: false
