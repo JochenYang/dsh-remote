@@ -40,9 +40,10 @@ Phone browser ──HTTPS──> relay-server (this service) ──WS frames─�
 - **HTTP reverse proxy**: requests/responses move in ≤64 KiB frames — frame
   order is stream order (SSE/blob untouched); immediate 409 when the host is
   offline; 10s no-progress watchdog.
-- **WebSocket passthrough**: `/events/*` upgrades are relayed as
-  `ws-open/ws-frame/ws-close` frames. Phone frames above 64 KiB close the
-  bridge (1009), and an unanswered host handshake closes it after 15s.
+- **WebSocket passthrough**: event-stream upgrades (currently
+  `/api/remote.mux`) are relayed as `ws-open/ws-frame/ws-close` frames. Phone
+  frames above 64 KiB close the bridge (1009), and an unanswered host handshake
+  closes it after 15s.
 - **Admin console**: device overview, pairing codes with countdown, token
   fingerprints, disconnect / revoke / remove, all/online/offline filters;
   single-active-token policy (re-pairing displaces the previous token).
@@ -137,7 +138,7 @@ relay.example.com {
 
 ### Reverse-proxy troubleshooting (WebSocket upgrade headers)
 
-`/events/*` and `/ws` rely on the WebSocket upgrade. caddy supports it natively; **nginx and CDNs such as EdgeOne must explicitly forward the Upgrade/Connection headers**, otherwise the phone event stream fails silently (no live output, stale status):
+`/ws` and the phone-side event stream (currently `/api/remote.mux`) rely on the WebSocket upgrade. caddy supports it natively; **nginx and CDNs such as EdgeOne must explicitly forward the Upgrade/Connection headers**, otherwise the phone event stream fails silently (no live output, stale status):
 
 ```nginx
 location / {
@@ -205,17 +206,18 @@ available.
 ## Security
 
 - Challenge-response anti-replay (one-shot 60s challenges); 10-minute pairing
-  codes with rate limits.
+  codes, rate-limited per real client address and locked out after repeated
+  failures.
 - Only `sha256(code)` / `sha256(token)` are persisted; challenge, response,
-  token and code are never logged.
+  token and code are never logged. Phone cookies are HttpOnly +
+  SameSite=Strict; the admin console has its own session store and attempt
+  limit.
 - `HOST_TOKEN` is the trust boundary: whoever holds it owns the host identity
-  on this relay.
-- Phone cookie sessions are HttpOnly + SameSite=Strict; the admin console has
-  its own session store and rate limiting.
-- Always deploy behind TLS (caddy/nginx examples above).
+  on this relay. Always deploy behind TLS (caddy example above).
 
-Wire formats, handshake flow and security parameters: [docs/PROTOCOL.md](../docs/PROTOCOL.md)
-(carry the file along when publishing standalone).
+Full trust model: [SECURITY.md](../SECURITY.md); wire formats, handshake flow
+and security parameters: [docs/PROTOCOL.md](../docs/PROTOCOL.md) (carry the
+file along when publishing standalone).
 
 ## Development
 

@@ -30,7 +30,7 @@
 
 ```
 手机浏览器 ──HTTPS──> relay-server ──WS 帧──> dsh-remote 插件 ──HTTP/WS──> 本地 dsh web server
-    │                    │  └─────────── 下行事件流透传（/events/*）────────────┘
+    │                    │  └─────────── 下行事件流透传（/api/remote.mux）──────┘
     │                                                               (127.0.0.1:<port>)
     ├── 上行：/d/<deviceId>/* 全量反代，帧序即流序（SSE / blob 不受影响）
     ├── 配对：6 位配对码 + 一次性挑战-响应（HMAC-SHA256），HOST_TOKEN 为信任边界
@@ -65,27 +65,22 @@ viewport meta，不碰上游的类名与结构，因此上游再改版不会把�
 
 ## 安全模型
 
-- `HOST_TOKEN` 是 relay 的唯一信任边界；配对走一次性挑战-响应，防重放。
-- 中继落盘只存 `sha256(code)` / `sha256(token)`；日志脱敏。
-- 手机经 HttpOnly 会话 cookie 认证；管理台独立口令与会话。
-- 新版 dsh 的浏览器会话认证（`client-connection`）由主机插件在进程内桥接：
-  用 Connection 启动令牌换取绑定回环 authority 的 cookie 并附到隧道流量上，
-  令牌绝不下发手机；老版 dsh 无此服务时自动降级为透传。
-- 部署必须置于 TLS 之后（README 提供 systemd + caddy 完整示例）。
+`HOST_TOKEN` 是 relay 的唯一信任边界；配对走一次性挑战-响应，中继落盘只存
+`sha256(code)` / `sha256(token)`，日志脱敏；手机经 HttpOnly 会话 cookie 认证，
+管理台独立口令与会话；新版 dsh 的浏览器会话认证由插件在进程内桥接（启动令牌
+绝不下发手机）。部署必须置于 TLS 之后。
 
-完整威胁模型与帧格式见 [docs/PROTOCOL.md](./docs/PROTOCOL.md)。
+- 完整威胁模型与报告渠道：[SECURITY.md](./SECURITY.md)
+- 帧格式与协议层承诺：[docs/PROTOCOL.md](./docs/PROTOCOL.md)
+- 版本历史：[CHANGELOG.md](./CHANGELOG.md)
 
 ## 开发
 
-两个包均为独立 pnpm 项目：
-
-```sh
-cd relay-server && pnpm install && pnpm build && pnpm typecheck
-cd dsh-remote  && pnpm install && pnpm build && pnpm typecheck
-```
+两个包是独立的 pnpm 项目：安装、构建、类型门与打包命令见各包 README 的「开发」段，
+门禁与发布流程以 [`.github/workflows/`](./.github/workflows/) 为准。
 
 > `dsh-remote` 的 tsconfig 类型映射指向本机的 deepseek-harness 检出
-> （`../../deepseek-harness`），CI 只做构建与 `node --check`。
+> （`../../deepseek-harness`），因此类型检查只在本地跑，CI 只做构建与 `node --check`。
 
 ## License
 

@@ -34,9 +34,10 @@
   `/api/remote.mux` WebSocket）双向桥接。
 - **信任头剥离**：转发前剥离 `origin` / `sec-fetch-*` / `referer` 等浏览器信任头，
   让隧道流量通过 dsh 的 `/api` Host 防线（否则所有 API 调用 403）。
-- **settings 解锁**：dsh 前端按页面 hostname 判定 settings 可用性，隧道会话会被
-  判为"不可用"；插件在转发时对唯一的 ui-settings 客户端 bundle 做定点改写，
-  恢复模型目录、插件配置等全部设置面（响应本身已脱敏，密钥材料从不上线）。
+- **settings 解锁**：dsh 前端用 `connection.isLoopback` 判定设置面可用性，其优先读
+  `window.__DSH_TRANSPORT__.ownsHost`，而隧道会话的 hostname 永远不满足。插件在隧道
+  HTML 里声明 `ownsHost: true`（该页面确实由 dsh 宿主机提供），恢复模型目录、插件配置
+  等全部设置面；设置数据本身仍由 dsh 脱敏，密钥材料从不上线。
 - **移动适配层**：向隧道 HTML 注入 viewport 提示与聊天宽度变量（≤768px 聊天与
   输入卡片全宽）——侧栏抽屉、设置面板全屏与导航横滑、下拉钳制由 dsh 0.2.2 起
   自带，插件不再覆盖；桌面与 GUI 流量不经过插件，零影响。
@@ -108,13 +109,15 @@ pnpm pack             # 打包 tgz
 
 ## 安全
 
-- `HOST_TOKEN` 是 relay 侧唯一信任边界；本插件不做二次鉴权，令牌只存本机。
-- 配对码 10 分钟 TTL、一次性挑战（60s）；日志不打印 code/token。
-- 隧道流量对本地 dsh 而言等同回环客户端，信任边界在 relay 的手机会话认证。
+- 本插件不做二次鉴权：`HOST_TOKEN` 与手机会话认证都属于 relay，插件把隧道流量当作
+  回环客户端转发，令牌只存本机，日志不打印 code/challenge/token。
 - 新版 dsh 的浏览器会话 cookie（`client-connection`）由插件在进程内桥接：用
-  Connection 启动令牌换取绑定回环 authority 的 cookie 并附到隧道流量，令牌
-  绝不下发手机；老版 dsh 无此服务时自动透传。事件流路径以当前 dsh 的实际
-  路径为准（旧 `/events/*` 已改为 `/api/remote.mux`）。
+  Connection 启动令牌换取绑定回环 authority 的 cookie 并附到隧道流量上，令牌绝不
+  下发手机；老版 dsh 无此服务时自动透传。事件流路径以当前 dsh 为准
+  （旧 `/events/*` 已改为 `/api/remote.mux`）。
+
+完整信任模型见 [SECURITY.md](../SECURITY.md)；协议帧格式与握手参数见
+[docs/PROTOCOL.md](../docs/PROTOCOL.md)。
 
 ## License
 

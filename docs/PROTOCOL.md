@@ -15,8 +15,8 @@
 - **数据平面一（HTTP）**：手机浏览器对 `/d/<deviceId>/*` 发起的全部 HTTP 请求，由 relay 转发给 host 会话；
   host 请求本地 dsh web server，把响应按帧流式回传。dsh 前端以 `location.origin` 为 API base
   （`packages/client/connection/src/client/rpc.ts` `resolveBase()`），因此中继后**零改写**即可工作。
-- **数据平面二（WebSocket 下行）**：dsh 前端开销最少两条下行事件流
-  （`/events/mux`、`/events/host`，见 `web-api-client.ts`）。手机对同路径的 upgrade
+- **数据平面二（WebSocket 下行）**：dsh 前端的事件流（当前版本为
+  `/api/remote.mux`，历史版本为 `/events/*`）。手机对同路径的 upgrade
   由 relay 透传为 `ws-open/ws-frame/ws-close` 帧，host 在本地建立等价 WS 后双向搬运。
 
 ## 2. 通用规则
@@ -98,11 +98,12 @@ relay 校验配对码（10 分钟 TTL；按真实客户端 IP 5 次/分钟，连
 
 ## 6. WebSocket 下行透传帧
 
-手机对 `/d/<deviceId>/events/*` 发起 upgrade 时：
+手机对 `/d/<deviceId>/<path>` 发起 upgrade 时（`<path>` 与当前 dsh 的事件流一致，
+例如 `/api/remote.mux`）：
 
 | 方向 | 帧 | 说明 |
 |---|---|---|
-| relay→host | `{ "t":"ws-open", "id":7, "path":"/events/mux", "headers":{ "sec-websocket-protocol":"…" } }` | relay 已接受 upgrade，等待 host 建立本地 WS |
+| relay→host | `{ "t":"ws-open", "id":7, "path":"/api/remote.mux", "headers":{ "sec-websocket-protocol":"…" } }` | relay 已接受 upgrade，等待 host 建立本地 WS |
 | host→relay | `{ "t":"ws-open-ok", "id":7 }`；失败 `{ "t":"ws-open-err", "id":7, "reason":"…" }` → relay 关闭手机侧 socket | |
 | 双向 | `{ "t":"ws-frame", "id":7, "opcode":1\|2, "dataBase64":"…" }` | `1`=text、`2`=binary；顺序透传 |
 | 双向 | `{ "t":"ws-close", "id":7, "code":1000, "reason":"…" }` | 任一方向触发后全链路关闭 |
@@ -138,7 +139,8 @@ host 在本地使用 Node 原生 `WebSocket`（globalThis，Node 22+）连接
 > `POST /pair` 取 `deviceId/challenge/token` → 本地计算 HMAC-SHA256 响应 →
 > 经 `/ws?role=phone` 的 `hello` 完成挑战-响应（同时得知 host 是否在线）→
 > 带 `x-dsh-relay-token` 调 `/d/<deviceId>/__claim` 换 cookie。
-> 此后 HTTP 与 WS upgrade 均携带该 cookie；`/api/*` 与 `/events/*` 透传 dsh 原生命名，
+> 此后 HTTP 与 WS upgrade 均携带该 cookie；`/api/*`（含事件流
+> `/api/remote.mux`）透传 dsh 原生命名，
 > App 直接复用 dsh 的 `client-request` 包络，无需 dsh 侧 Bearer 凭证
 > （host 插件为每条上游请求补浏览器会话 cookie，与浏览器流一致）。
 
@@ -155,6 +157,9 @@ host 在本地使用 Node 原生 `WebSocket`（globalThis，Node 22+）连接
 host 首次注册（`hello` 带 `hostToken` 且 deviceId 未知）→ 自动注册 device（写 device 行）。
 
 ## 10. 安全边界（明确承诺）
+
+> 本节只写协议层的承诺；工程侧信任模型、报告渠道与部署约束见
+> [SECURITY.md](../SECURITY.md)。
 
 - relay 必须部署于 TLS 之后（文档给出 caddy/nginx 反代示例）；帧内无明文密钥。
 - `HOST_TOKEN` 是 relay 侧唯一信任边界：谁持有它谁可注册/接管该 relay 上的 host 身份（自托管前提）。

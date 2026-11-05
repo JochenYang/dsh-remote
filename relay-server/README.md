@@ -36,8 +36,9 @@
   （60s），WebSocket 完成挑战-响应；支持持令牌静默重连。
 - **HTTP 反向代理**：请求/响应按 ≤64KiB 帧搬运，帧序即流序（SSE / blob 不受影响）；
   host 离线立即 409；10s 无进度防悬挂。
-- **WebSocket 透传**：`/events/*` upgrade 透传为 `ws-open/ws-frame/ws-close` 帧；
-  手机方向超过 64KiB 的帧直接断开（1009），host 启动握手 15s 无应答也断开。
+- **WebSocket 透传**：事件流 upgrade（当前为 `/api/remote.mux`）透传为
+  `ws-open/ws-frame/ws-close` 帧；手机方向超过 64KiB 的帧直接断开（1009），
+  host 启动握手 15s 无应答也断开。
 - **管理台**：设备总览、配对码与有效期、令牌指纹、断开手机 / 吊销设备 / 删除设备、
   全部/在线/离线筛选；单活跃令牌策略（重新配对自动替换旧令牌）。
 - **令牌卫生**：单设备仅一个活跃令牌；孤儿与 30 天前已吊销的令牌加载时自动清理；
@@ -128,7 +129,7 @@ relay.example.com {
 
 ### 反代排障（WebSocket 升级头）
 
-`/events/*` 与 `/ws` 依赖 WebSocket upgrade。caddy 原生支持、无需配置；**nginx 与 EdgeOne 等 CDN 必须显式放行 Upgrade/Connection 头**，否则手机端事件流会静默失败（无实时输出、状态不刷新）：
+`/ws` 与手机侧事件流（当前为 `/api/remote.mux`）依赖 WebSocket upgrade。caddy 原生支持、无需配置；**nginx 与 EdgeOne 等 CDN 必须显式放行 Upgrade/Connection 头**，否则手机端事件流会静默失败（无实时输出、状态不刷新）：
 
 ```nginx
 location / {
@@ -192,14 +193,16 @@ sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
 
 ## 安全
 
-- 挑战-响应防重放（challenge 60s 一次性）；配对码 10 分钟 TTL + 限速。
-- 落盘仅存 `sha256(code)` / `sha256(token)`；日志永不打印 challenge/response/token/code。
-- `HOST_TOKEN` 即信任边界：谁持有它谁可注册/接管该 relay 上的 host 身份。
-- 手机 cookie 会话 HttpOnly + SameSite=Strict；管理台独立会话与限速。
-- 部署必须置于 TLS 之后（文档示例 caddy/nginx）。
+- 挑战-响应防重放（challenge 一次性 60s）；配对码 10 分钟 TTL，按真实客户端地址
+  限速，并在连续失败后锁定。
+- 落盘仅存 `sha256(code)` / `sha256(token)`；日志永不打印
+  challenge/response/token/code；手机 cookie 为 HttpOnly + SameSite=Strict，
+  管理台独立会话与独立的尝试限速。
+- `HOST_TOKEN` 即信任边界：谁持有它谁可注册/接管该 relay 上的 host 身份；部署必须
+  置于 TLS 之后（下方有 caddy 示例）。
 
-协议帧格式、握手流程与安全参数见 [docs/PROTOCOL.md](../docs/PROTOCOL.md)
-（独立发布时请随仓库携带该文件）。
+完整信任模型见 [SECURITY.md](../SECURITY.md)；协议帧格式、握手流程与安全参数见
+[docs/PROTOCOL.md](../docs/PROTOCOL.md)（独立发布时请随包携带该文件）。
 
 ## 开发
 

@@ -31,7 +31,7 @@
 
 ```
 Phone browser ──HTTPS──> relay-server ──WS frames──> dsh-remote plugin ──HTTP/WS──> local dsh web server
-    │                     │  └──────── downstream event streams (/events/*) ────────┘
+    │                     │  └──────── downstream event streams (/api/remote.mux) ──┘
     │                                                                   (127.0.0.1:<port>)
     ├── uplink: everything under /d/<deviceId>/* is proxied; frame order = stream order
     ├── pairing: 6-digit code + one-shot challenge-response (HMAC-SHA256); HOST_TOKEN is the trust boundary
@@ -74,30 +74,26 @@ cannot break the phone layout from here.
 
 ## Security Model
 
-- `HOST_TOKEN` is the relay's single trust boundary; pairing uses one-shot
-  challenge-response with anti-replay.
-- Only `sha256(code)` / `sha256(token)` are persisted; logs are scrubbed.
-- Phones authenticate via HttpOnly session cookies; the admin console has its
-  own password and session store.
-- Modern dsh's browser-session auth (`client-connection`) is bridged in-process
-  by the host plugin: it mints the loopback-authority cookie from the Connection
-  launch token and attaches it to tunneled traffic — the token never reaches the
-  phone. Older dsh builds without that service degrade to pass-through.
-- Always deploy behind TLS (full systemd + caddy examples in the READMEs).
+`HOST_TOKEN` is the relay's single trust boundary. Pairing is a one-shot
+challenge-response; the relay persists only `sha256(code)` / `sha256(token)`
+and scrubs its logs; phones authenticate through an HttpOnly session cookie,
+the admin console keeps its own password and session store, and modern dsh's
+browser-session auth is bridged in-process by the host plugin (the launch token
+never reaches the phone). Always deploy behind TLS.
 
-Full threat model and wire formats: [docs/PROTOCOL.md](./docs/PROTOCOL.md).
+- Full threat model and reporting: [SECURITY.md](./SECURITY.md)
+- Wire formats and protocol promises: [docs/PROTOCOL.md](./docs/PROTOCOL.md)
+- Version history: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Development
 
-Both packages are standalone pnpm projects:
-
-```sh
-cd relay-server && pnpm install && pnpm build && pnpm typecheck
-cd dsh-remote  && pnpm install && pnpm build && pnpm typecheck
-```
+Both packages are standalone pnpm projects: install, build, type gates and
+packaging live in each package README's "Development" section, and the gates /
+release flow are defined by [`.github/workflows/`](./.github/workflows/).
 
 > The dsh-remote tsconfig type mappings point at a local deepseek-harness
-> checkout (`../../deepseek-harness`). CI only runs build + `node --check`.
+> checkout (`../../deepseek-harness`), so type checks run locally only; CI
+> builds and runs `node --check`.
 
 ## License
 

@@ -32,15 +32,18 @@ Phone browser ──HTTPS──> relay-server ──WS frames──> dsh-remote 
 
 - **Full tunnel**: every phone request under `/d/<deviceId>/*` is reverse-proxied
   to the local dsh web server; SSE/blob streams are re-chunked frame-by-frame in
-  order; `/events/mux` and `/events/host` are bridged bidirectionally.
+  order; the UI event stream (currently the `/api/remote.mux` WebSocket) is
+  bridged bidirectionally.
 - **Trust-header stripping**: `origin` / `sec-fetch-*` / `referer` are removed
   before forwarding so tunneled traffic passes dsh's `/api` Host fence
   (otherwise every API call gets a 403).
-- **Settings unlock**: the dsh web client gates its settings mirror on the page
-  hostname, which never qualifies behind a relay. The plugin rewrites the single
-  ui-settings client bundle in transit, restoring the model catalog, plugin
-  config sections and every other settings surface (describe answers are
-  redacted upstream; secret material never rides the wire).
+- **Settings unlock**: the dsh web client gates its settings mirror on
+  `connection.isLoopback`, which prefers `window.__DSH_TRANSPORT__.ownsHost`,
+  and a relay hostname never qualifies. The plugin declares `ownsHost: true` in
+  the tunneled HTML (the page really is served by the dsh host), restoring the
+  model catalog, plugin config sections and every other settings surface —
+  describe answers stay redacted upstream and secret material never rides the
+  wire.
 - **Mobile adaptation layer**: injects viewport hints and chat-width custom
   properties into tunnel HTML (full-width chat and composer at ≤768px). The
   sidebar drawer, full-screen settings panel with its horizontal nav, and
@@ -95,9 +98,9 @@ scanning, or by entering the code at `<relay>/pair` on the phone.
 
 - **Uplink**: phone request → relay → this plugin → local dsh web server, with
   the response streamed back frame-by-frame (frame order = stream order).
-- **Downstream**: the two dsh event streams (`/events/mux`, `/events/host`) are
-  WebSockets; the relay forwards `ws-open/ws-frame/ws-close` frames and the
-  plugin mirrors them onto an equivalent local WebSocket.
+- **Downstream**: the dsh event stream (currently the `/api/remote.mux`
+  WebSocket) is forwarded by the relay as `ws-open/ws-frame/ws-close` frames and
+  mirrored onto an equivalent local WebSocket.
 - **Keepalive**: 30s ping/pong, 90s silence kill; reconnects back off
   exponentially (1s→60s).
 
@@ -119,12 +122,17 @@ pnpm pack             # pack the tgz
 
 ## Security
 
-- `HOST_TOKEN` is the relay's single trust boundary; the plugin adds no second
-  auth layer and keeps the token local.
-- Pairing codes live 10 minutes with one-shot 60s challenges; codes and tokens
-  are never logged.
-- To the local dsh server, tunneled traffic reads as the loopback client it
-  physically is; the trust boundary lives in the relay's phone-session auth.
+- The plugin adds no second auth layer: `HOST_TOKEN` and phone-session auth both
+  live in the relay. It forwards tunneled traffic as the loopback client it
+  physically is, keeps the token local, and never logs codes, challenges or
+  tokens.
+- Modern dsh's browser-session cookie (`client-connection`) is bridged in
+  process from the Connection launch token; the token never reaches the phone,
+  and older dsh builds pass through unchanged. Event-stream paths follow the
+  running dsh (`/events/*` became `/api/remote.mux`).
+
+Full trust model: [SECURITY.md](../SECURITY.md); frames and handshake
+parameters: [docs/PROTOCOL.md](../docs/PROTOCOL.md).
 
 ## License
 
